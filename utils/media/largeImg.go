@@ -1,7 +1,9 @@
 package media
 
 import (
+	"fmt"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -18,11 +20,22 @@ func GetLargeImg(imgURL string) string {
 
 		// Twitter
 		if strings.Contains(imgURL, "twimg.com") {
-			if strings.Contains(imgURL, "?") {
-				imgURL = imgURL[:strings.Index(imgURL, "?")]
+			// 移除查询参数
+			if queryPos := strings.Index(imgURL, "?"); queryPos != -1 {
+				imgURL = imgURL[:queryPos]
 			}
-			imgURL += "?format=jpg&name=orig"
+
+			// 获取扩展名（包含点号）
+			ext := path.Ext(imgURL)
+			if ext == "" {
+				// 没有扩展名时添加默认处理
+				ext = ".jpg"
+			}
+
+			// 确保格式参数正确添加
+			imgURL = fmt.Sprintf("%s?format=%s&name=orig", imgURL, strings.ToLower(strings.TrimPrefix(ext, ".")))
 		}
+
 	}
 
 	return imgURL
