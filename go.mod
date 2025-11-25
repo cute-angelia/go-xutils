@@ -1,4 +1,4 @@
-module github.com/cute-angelia/go-utils
+module github.com/cute-angelia/go-xutils
 
 go 1.23
 
