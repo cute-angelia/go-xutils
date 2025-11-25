@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-utils/utils/generator/base"
+	"github.com/cute-angelia/go-xutils/utils/generator/base"
 	"golang.org/x/image/tiff"
 	"image"
 	"image/gif"

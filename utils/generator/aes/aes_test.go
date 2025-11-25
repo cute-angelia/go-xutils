@@ -4,7 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"github.com/cute-angelia/go-utils/utils/generator/base"
+	"github.com/cute-angelia/go-xutils/utils/generator/base"
 	"io"
 	"log"
 	"testing"

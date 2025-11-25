@@ -2,7 +2,7 @@ package ithreading
 
 import (
 	"errors"
-	"github.com/cute-angelia/go-utils/utils/irescue"
+	"github.com/cute-angelia/go-xutils/utils/irescue"
 	"sync"
 )
 

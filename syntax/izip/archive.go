@@ -4,7 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"github.com/cute-angelia/go-utils/syntax/ifile"
-	"github.com/cute-angelia/go-utils/utils/iprogressbar"
+	"github.com/cute-angelia/go-xutils/utils/iprogressbar"
 	"io"
 	"os"
 	"path"

@@ -3,7 +3,7 @@ package ithreading
 import (
 	"bytes"
 	"context"
-	"github.com/cute-angelia/go-utils/utils/irescue"
+	"github.com/cute-angelia/go-xutils/utils/irescue"
 	"runtime"
 	"strconv"
 )

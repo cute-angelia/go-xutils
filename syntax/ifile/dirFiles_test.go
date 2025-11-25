@@ -3,7 +3,7 @@ package ifile
 import (
 	"fmt"
 	"github.com/cute-angelia/go-utils/syntax/ijson"
-	pool "github.com/cute-angelia/go-utils/utils/pool/antspool"
+	pool "github.com/cute-angelia/go-xutils/utils/pool/antspool"
 	"io/fs"
 	"io/ioutil"
 	"log"
@@ -19,7 +19,7 @@ func TestDirFiles(t *testing.T) {
 
 	str := "FilterFilename\nx\t @ daw哦"
 	log.Println(FilterFilename(str))
-	
+
 	// rootPath := "/Users/vanilla/Downloads"
 	// t.Log(GetAllPaths(rootPath))
 	t.Log(Name("/Users/vanilla/Downloads/财务管理学/课件/财务管理学课件精讲四王天娇.pdf"))
@@ -42,7 +42,7 @@ func TestSyncFiles(t *testing.T) {
 	readWalkDir(dirPath)
 }
 
-//  读取当前文件夹
+// 读取当前文件夹
 var badDir []string
 
 func readCurrentDir(dirPath string) {

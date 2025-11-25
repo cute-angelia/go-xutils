@@ -9,7 +9,7 @@ import (
 	"github.com/cute-angelia/go-utils/components/caches"
 	"github.com/cute-angelia/go-utils/components/idownload"
 	"github.com/cute-angelia/go-utils/syntax/ifile"
-	"github.com/cute-angelia/go-utils/utils/generator/hash"
+	"github.com/cute-angelia/go-xutils/utils/generator/hash"
 	progress "github.com/markity/minio-progress"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"

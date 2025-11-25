@@ -18,9 +18,9 @@ package auth
 
 import (
 	"github.com/cute-angelia/go-utils/syntax/itime"
-	"github.com/cute-angelia/go-utils/utils/http/api"
-	"github.com/cute-angelia/go-utils/utils/http/apiV3"
-	"github.com/cute-angelia/go-utils/utils/http/ip"
+	"github.com/cute-angelia/go-xutils/utils/http/api"
+	"github.com/cute-angelia/go-xutils/utils/http/apiV3"
+	"github.com/cute-angelia/go-xutils/utils/http/ip"
 	"github.com/go-chi/chi"
 	"github.com/go-ozzo/ozzo-validation/v4"
 	"go-admin/internal/consts"

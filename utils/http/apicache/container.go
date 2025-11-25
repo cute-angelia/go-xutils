@@ -2,7 +2,7 @@ package apicache
 
 import (
 	"github.com/cute-angelia/go-utils/components/caches"
-	"github.com/cute-angelia/go-utils/utils/generator/hash"
+	"github.com/cute-angelia/go-xutils/utils/generator/hash"
 	jsoniter "github.com/json-iterator/go"
 	"time"
 )

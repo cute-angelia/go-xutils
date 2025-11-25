@@ -28,7 +28,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
-	"github.com/cute-angelia/go-utils/utils/generator/base"
+	"github.com/cute-angelia/go-xutils/utils/generator/base"
 	"io"
 	"log"
 )

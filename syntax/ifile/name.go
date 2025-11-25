@@ -3,7 +3,7 @@ package ifile
 import (
 	"fmt"
 	"github.com/cute-angelia/go-utils/syntax/irandom"
-	"github.com/cute-angelia/go-utils/utils/generator/snowflake"
+	"github.com/cute-angelia/go-xutils/utils/generator/snowflake"
 	"path"
 	"strings"
 	"time"

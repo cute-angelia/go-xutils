@@ -1,8 +1,8 @@
 module github.com/cute-angelia/go-xutils
 
-go 1.23
+go 1.24.0
 
-toolchain go1.23.1
+toolchain go1.24.10
 
 require (
 	git.mills.io/prologic/bitcask v1.0.2
@@ -10,6 +10,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.10+incompatible
 	github.com/anthonynsimon/bild v0.13.0
 	github.com/astaxie/beego v1.12.3
+	github.com/cute-angelia/go-utils v1.8.62
 	github.com/dustin/go-humanize v1.0.1
 	github.com/faabiosr/cachego v0.17.0
 	github.com/fastwego/wxwork v1.0.0-beta.8
@@ -46,12 +47,12 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/buntdb v1.3.0
 	github.com/yitter/idgenerator-go v1.3.3
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.44.0
 	golang.org/x/image v0.18.0
-	golang.org/x/net v0.29.0
+	golang.org/x/net v0.47.0
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
-	golang.org/x/sync v0.10.0
-	golang.org/x/text v0.21.0
+	golang.org/x/sync v0.18.0
+	golang.org/x/text v0.31.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gorm.io/driver/mysql v1.4.7
@@ -62,12 +63,10 @@ require (
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
-	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/denisenkom/go-mssqldb v0.12.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
@@ -88,12 +87,10 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lestrrat-go/strftime v1.0.5 // indirect
-	github.com/lib/pq v1.3.0 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
@@ -113,7 +110,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
-	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/shiena/ansicolor v0.0.0-20151119151921-a422bbe96644 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
@@ -130,8 +126,8 @@ require (
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20200228211341-fcea875c7e85 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/term v0.37.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect

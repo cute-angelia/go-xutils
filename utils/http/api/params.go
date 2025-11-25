@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/cute-angelia/go-utils/utils/generator/hash"
+	"github.com/cute-angelia/go-xutils/utils/generator/hash"
 	"github.com/go-chi/chi"
 	jsoniter "github.com/json-iterator/go"
 	"net/http"

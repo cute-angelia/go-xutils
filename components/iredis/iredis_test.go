@@ -3,7 +3,7 @@ package iredis
 import (
 	"context"
 	"errors"
-	"github.com/cute-angelia/go-utils/utils/conf"
+	"github.com/cute-angelia/go-xutils/utils/conf"
 	"github.com/go-redis/redis/v8"
 	"log"
 	"testing"
