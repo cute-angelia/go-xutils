@@ -14,12 +14,36 @@ import (
 )
 
 // 检查是否为空文件夹
+// CheckIsEmptyDir 检查指定路径是否为空文件夹（排除.DS_Store）
 func CheckIsEmptyDir(dirpath string) bool {
-	s, _ := ioutil.ReadDir(dirpath)
-	if len(s) == 0 {
-		return true
+	// 读取目录内容
+	files, err := ioutil.ReadDir(dirpath)
+	if err != nil {
+		// 读取失败默认非空
+		return false
 	}
-	return false
+	// 过滤.DS_Store文件
+	for _, file := range files {
+		if file.Name() != ".DS_Store" {
+			return false
+		}
+	}
+	return true
+}
+
+// GetParentDirectory 获取指定路径的上级目录名
+func GetParentDirectory(directory string) string {
+	// 获取绝对路径
+	absPath, err := filepath.Abs(directory)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// 分割路径并获取父目录
+	parts := strings.Split(absPath, string(os.PathSeparator))
+	if len(parts) < 2 {
+		return "" // 根目录或无效路径
+	}
+	return parts[len(parts)-2]
 }
 
 // GetDepthOnePathsAndFilesIncludeExt 只获取 当前文件夹 匹配后缀名 的 文件和文件夹
