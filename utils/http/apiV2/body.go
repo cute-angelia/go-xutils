@@ -27,16 +27,25 @@ type body struct {
 var jsonLib = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func NewBody(r *http.Request) *body {
+
+	contentType := r.Header.Get("Content-Type")
+
+	// 过滤分号
+	//application/x-www-form-urlencoded; charset=UTF-8
+	if strings.Contains(contentType, ";") {
+		contentType = strings.Split(contentType, ";")[0]
+	}
+
 	b := body{
 		r: r,
 	}
-	if r.Header.Get("Content-Type") == ContentTypeWWWForm {
+	if contentType == ContentTypeWWWForm {
 		if r.PostForm == nil {
 			r.ParseMultipartForm(32 << 20) // 32MB
 		}
 		b.dataWWWForm = r.Form
 	}
-	if r.Header.Get("Content-Type") == ContentTypeJson || strings.Contains(r.Header.Get("Content-Type"), ContentTypeJson) {
+	if contentType == ContentTypeJson || strings.Contains(contentType, ContentTypeJson) {
 		b.isJson = true
 
 		buf, _ := io.ReadAll(r.Body)

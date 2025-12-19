@@ -2,7 +2,7 @@ package iupload
 
 import (
 	"errors"
-	"github.com/cute-angelia/go-utils/syntax/islice"
+	"github.com/cute-angelia/go-xutils/syntax/islice"
 	"io"
 	"mime/multipart"
 	"os"

@@ -2,7 +2,7 @@ package islice
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"log"
 	"testing"
 )

@@ -3,6 +3,7 @@ package irandom
 type letter string
 
 const (
+	LetterNum            = "0123456789"
 	LetterAbc            = letter("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	LetterAbcLower       = letter("abcdefghijklmnopqrstuvwxyz")
 	LetterAbcUpper       = letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")

@@ -1,7 +1,7 @@
 package igorm
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/cute-angelia/go-xutils/utils/iruntime"
 	"github.com/spf13/viper"
 	"gorm.io/gorm/logger"

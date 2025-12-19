@@ -6,7 +6,7 @@
 ```
 import (
     _ "github.com/go-sql-driver/mysql"
-    "github.com/cute-angelia/go-utils/umysql"
+    "github.com/cute-angelia/go-xutils/umysql"
 )
 
 ```

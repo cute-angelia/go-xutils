@@ -1,7 +1,7 @@
 package routercache
 
 import (
-	"github.com/cute-angelia/go-utils/components/caches"
+	"github.com/cute-angelia/go-xutils/components/caches"
 	"net/http"
 	"time"
 )

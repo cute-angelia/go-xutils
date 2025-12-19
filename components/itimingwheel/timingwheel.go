@@ -4,9 +4,9 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/imap"
-	"github.com/cute-angelia/go-utils/syntax/ithreading"
-	"github.com/cute-angelia/go-utils/syntax/itime"
+	"github.com/cute-angelia/go-xutils/syntax/imap"
+	"github.com/cute-angelia/go-xutils/syntax/ithreading"
+	"github.com/cute-angelia/go-xutils/syntax/itime"
 	"time"
 )
 

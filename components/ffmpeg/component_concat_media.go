@@ -3,9 +3,9 @@ package ffmpeg
 import (
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/icmd"
-	"github.com/cute-angelia/go-utils/syntax/ifile"
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/icmd"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"log"
 	"os"
 	"strings"

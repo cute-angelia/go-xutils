@@ -10,7 +10,6 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.10+incompatible
 	github.com/anthonynsimon/bild v0.13.0
 	github.com/astaxie/beego v1.12.3
-	github.com/cute-angelia/go-utils v1.8.62
 	github.com/dustin/go-humanize v1.0.1
 	github.com/faabiosr/cachego v0.17.0
 	github.com/fastwego/wxwork v1.0.0-beta.8

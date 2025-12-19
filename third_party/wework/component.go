@@ -2,7 +2,7 @@ package wework
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/third_party/wework/sendMessage"
+	"github.com/cute-angelia/go-xutils/third_party/wework/sendMessage"
 	"github.com/fastwego/wxwork/corporation"
 	apiMessage "github.com/fastwego/wxwork/corporation/apis/message"
 	"log"

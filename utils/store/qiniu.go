@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	file "github.com/cute-angelia/go-utils/syntax/ifile"
+	file "github.com/cute-angelia/go-xutils/syntax/ifile"
 	"github.com/qiniu/go-sdk/v7/auth"
 	"github.com/qiniu/go-sdk/v7/storage"
 	"io"

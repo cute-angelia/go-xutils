@@ -6,7 +6,7 @@ UID 转化
 package main
 
 import (
-	"github.com/cute-angelia/go-utils/grant/idCrypt"
+	"github.com/cute-angelia/go-xutils/grant/idCrypt"
 	"log"
 )
 

@@ -2,7 +2,7 @@ package oss
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/spf13/viper"
 	"log"
 )

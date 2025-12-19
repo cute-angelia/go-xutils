@@ -1,7 +1,7 @@
 package ifileutil
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/istrings"
+	"github.com/cute-angelia/go-xutils/syntax/istrings"
 	"io/ioutil"
 	"path"
 	"path/filepath"

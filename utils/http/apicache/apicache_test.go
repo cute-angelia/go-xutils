@@ -1,7 +1,7 @@
 package apicache
 
 import (
-	"github.com/cute-angelia/go-utils/components/caches/ibunt"
+	"github.com/cute-angelia/go-xutils/components/caches/ibunt"
 	"log"
 	"testing"
 )

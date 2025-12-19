@@ -1,8 +1,8 @@
 package loggerV3
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/ifile"
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
 	"log"

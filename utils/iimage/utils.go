@@ -2,7 +2,7 @@ package iimage
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"image"
 	"image/color"
 	"os"

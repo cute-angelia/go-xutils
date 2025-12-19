@@ -3,7 +3,7 @@ package store
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/cute-angelia/go-utils/components/caches/mem"
+	"github.com/cute-angelia/go-xutils/components/caches/mem"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -46,7 +46,7 @@ type SinaError struct {
 	Reason  string `json:"reason"`
 }
 
-//Sina 图床 json
+// Sina 图床 json
 type SinaMsg struct {
 	Code string   `json:"code"`
 	Data SinaData `json:"data"`
@@ -157,7 +157,7 @@ func (s *Weibo) Upload(image *ImageParam) (ImageReturn, error) {
 
 }
 
-//新浪图床登录
+// 新浪图床登录
 func (s *Weibo) Login(name string, pass string) interface{} {
 	uri := "https://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.15)&_=1403138799543"
 	userInfo := make(map[string]string)
@@ -167,7 +167,7 @@ func (s *Weibo) Login(name string, pass string) interface{} {
 	return cookie
 }
 
-//获取新浪图床 Cookie
+// 获取新浪图床 Cookie
 func (s *Weibo) getCookies(durl string, data map[string]string) interface{} {
 	//尝试从缓存里面获取 Cookie
 	if memcache.GetInterface("SinaCookies") != nil {
@@ -219,7 +219,7 @@ func (s *Weibo) getCookies(durl string, data map[string]string) interface{} {
 	return cookie
 }
 
-//获取 Sina 图床 URL
+// 获取 Sina 图床 URL
 func (s *Weibo) getSinaUrl(body []byte, imgType string) string {
 	var sinaAccount = s.Config
 

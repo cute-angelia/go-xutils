@@ -2,7 +2,7 @@ package iurl
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/istrings"
+	"github.com/cute-angelia/go-xutils/syntax/istrings"
 	"net/url"
 	"strings"
 )

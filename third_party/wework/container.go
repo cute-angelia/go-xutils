@@ -1,7 +1,7 @@
 package wework
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/ijson"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/go-redis/redis/v8"
 	"github.com/spf13/viper"
 	"log"

@@ -17,7 +17,7 @@ ref: [render](https://github.com/go-chi/render)
 package auth
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/itime"
+	"github.com/cute-angelia/go-xutils/syntax/itime"
 	"github.com/cute-angelia/go-xutils/utils/http/api"
 	"github.com/cute-angelia/go-xutils/utils/http/apiV3"
 	"github.com/cute-angelia/go-xutils/utils/http/ip"

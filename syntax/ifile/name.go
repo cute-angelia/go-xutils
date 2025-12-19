@@ -2,7 +2,7 @@ package ifile
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/irandom"
+	"github.com/cute-angelia/go-xutils/syntax/irandom"
 	"github.com/cute-angelia/go-xutils/utils/generator/snowflake"
 	"path"
 	"strings"
@@ -110,7 +110,7 @@ func (f fileName) GetNameTimelineReverse(withDate bool) string {
 
 // name 按时间格式
 func (f fileName) GetNameTimeDate() string {
-	dname := time.Now().Format("20060102-150405") + "-" + irandom.RandString(10, irandom.LetterAbcLower)
+	dname := time.Now().Format("20060102-150405") + "-" + irandom.RandString(6, irandom.LetterNum)
 	return fmt.Sprintf("%s%s%s%s", f.prefix, dname, f.suffix, f.GetExt())
 }
 

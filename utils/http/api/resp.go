@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cute-angelia/go-utils/syntax/irandom"
+	"github.com/cute-angelia/go-xutils/syntax/irandom"
 	"github.com/cute-angelia/go-xutils/utils/iAes"
 	"github.com/cute-angelia/go-xutils/utils/iXor"
 	"log"

@@ -1,7 +1,7 @@
 package ffmpeg
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"log"
 	"time"
 )

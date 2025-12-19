@@ -1,7 +1,7 @@
 package ibuntV2
 
 import (
-	"github.com/cute-angelia/go-utils/syntax/irandom"
+	"github.com/cute-angelia/go-xutils/syntax/irandom"
 	"log"
 	"testing"
 	"time"

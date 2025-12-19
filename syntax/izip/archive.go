@@ -3,7 +3,7 @@ package izip
 import (
 	"archive/zip"
 	"bytes"
-	"github.com/cute-angelia/go-utils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"github.com/cute-angelia/go-xutils/utils/iprogressbar"
 	"io"
 	"os"
