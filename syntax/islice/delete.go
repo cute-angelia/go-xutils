@@ -1,5 +1,7 @@
 package islice
 
+import "slices"
+
 // 介意顺序
 func RemoveIntWithOrder(slice []int, s int) []int {
 	return append(slice[:s], slice[s+1:]...)
@@ -24,4 +26,11 @@ func RemoveStringWithoutOrder(s []string, i int) []string {
 func RemoveElement[T any](s []T, index int) []T {
 	s[index] = s[len(s)-1]
 	return s[:len(s)-1]
+}
+
+// 字符串的 slice 去空的字符串 使用 ~string 约束，允许所有底层为 string 的类型
+func RemoveEmptyString[T ~string](s []T) []T {
+	return slices.DeleteFunc(s, func(e T) bool {
+		return e == ""
+	})
 }
