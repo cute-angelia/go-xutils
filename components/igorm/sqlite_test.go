@@ -12,7 +12,7 @@ type TestModel struct {
 
 // TestSqlite go test -v --rrn TestSqlite
 func TestSqlite(t *testing.T) {
-	New(WithDbName("cache")).MustInitSqlite("/tmp")
+	New(WithDbName("cache")).MustInitSqlite()
 	orm, _ := GetGormSQLite("cache")
 
 	// Create table for `TestModel`

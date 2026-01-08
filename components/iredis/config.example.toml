@@ -1,4 +1,0 @@
-[redis]
-Name = "cache"
-Server = "10.99.16.84:6379"
-Password = "xx2018"

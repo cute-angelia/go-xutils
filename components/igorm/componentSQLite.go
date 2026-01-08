@@ -8,39 +8,51 @@ import (
 	"gorm.io/gorm/logger"
 	"log"
 	"os"
-	"sync"
 	"time"
 )
-
-var gormPoolSQLite sync.Map
 
 const PackageNameSQLite = "component.igorm.sqlite"
 
 // GetGormSQLite 获取 gorm.DB 对象
 func GetGormSQLite(dbName string) (*gorm.DB, error) {
+	// 统一从 gormPoolSQLite 读取
 	if v, ok := gormPoolSQLite.Load(dbName); ok {
 		return v.(*gorm.DB), nil
-	} else {
-		return nil, errors.New(PackageNameSQLite + " 获取失败:" + dbName + " 未初始化")
 	}
+	return nil, errors.New(PackageNameSQLite + " 获取失败:" + dbName + " 未初始化")
 }
 
-// MustInitSqlite 初始化  dir
+// MustInitSqlite 初始化
 func (c *Component) MustInitSqlite() *Component {
+	// 1. 检查是否已初始化，避免重复 Open
+	if _, ok := gormPoolSQLite.Load(c.config.DbName); ok {
+		return c
+	}
 
-	var pathdb string
-	if len(c.config.DbFile) > 0 {
-		pathdb = c.config.DbFile
-	} else {
-		pathdb = fmt.Sprintf("/%s_SQLite.db", c.config.DbName)
+	// 2. 确定数据库路径
+	pathdb := c.config.DbFile
+	if len(pathdb) == 0 {
+		pathdb = fmt.Sprintf("./%s_SQLite.db", c.config.DbName) // 建议用 ./ 相对路径
 	}
 
 	if c.config.Debug {
-		log.Println("sqlite path:", pathdb)
+		log.Println(PackageNameSQLite, "sqlite path:", pathdb)
 	}
 
-	// log
-	var vlog = new(log.Logger)
+	// 3. 执行初始化
+	db := c.initSqliteDb(pathdb)
+	if db == nil {
+		panic(fmt.Sprintf("[%s] ❌数据库 [%s] 初始化失败", PackageNameSQLite, c.config.DbName))
+	}
+
+	gormPoolSQLite.Store(c.config.DbName, db)
+
+	log.Printf("[%s] Name:%s 初始化成功 (Path:%s)", PackageNameSQLite, c.config.DbName, pathdb)
+	return c
+}
+
+func (c *Component) initSqliteDb(pathdb string) *gorm.DB {
+	var vlog *log.Logger
 	if c.config.LoggerWriter == nil {
 		vlog = log.New(os.Stdout, "\r\n", log.LstdFlags|log.Lshortfile)
 	} else {
@@ -48,25 +60,40 @@ func (c *Component) MustInitSqlite() *Component {
 	}
 
 	newLogger := logger.New(
-		vlog, // io writer
+		vlog,
 		logger.Config{
-			SlowThreshold: time.Second,       // Slow SQL threshold
-			LogLevel:      c.config.LogLevel, // Log level
+			SlowThreshold: time.Second,
+			LogLevel:      c.config.LogLevel,
 			Colorful:      true,
 		},
 	)
 
-	gconfig := gorm.Config{
+	// 1. 尝试打开 (SQLite 实际上很少有网络超时，主要是 IO 错误)
+	db, err := gorm.Open(sqlite.Open(pathdb), &gorm.Config{
 		Logger: newLogger,
+	})
+
+	if err != nil {
+		log.Printf("[%s] ❌数据库连接异常 Path:%s, Err:%v", PackageNameSQLite, pathdb, err)
+		return nil
 	}
 
-	// github.com/mattn/go-sqlite3
-	if db, err := gorm.Open(sqlite.Open(pathdb), &gconfig); err != nil {
-		panic(err)
-	} else {
-		if _, ok := gormPool.Load(c.config.DbName); !ok {
-			gormPoolSQLite.Store(c.config.DbName, db)
-		}
+	// 2. 配置底层连接池
+	idb, err := db.DB()
+	if err != nil {
+		return nil
 	}
-	return c
+
+	// 【重要】针对 SQLite 的特殊优化：
+	// 如果是写频繁的应用，建议 MaxOpenConns 设为 1，防止 database is locked
+	if c.config.MaxOpenConns > 0 {
+		idb.SetMaxOpenConns(c.config.MaxOpenConns)
+	} else {
+		idb.SetMaxOpenConns(1)
+	}
+
+	idb.SetMaxIdleConns(c.config.MaxIdleConns)
+	idb.SetConnMaxLifetime(c.config.MaxLifetime)
+
+	return db
 }

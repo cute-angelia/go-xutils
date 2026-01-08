@@ -31,7 +31,11 @@ func (c *Component) MustInitMysql() *Component {
 	}
 	// 初始化 db
 	if _, ok := gormPool.Load(c.config.DbName); !ok {
-		gormPool.Store(c.config.DbName, c.initMysqlDb())
+		db := c.initMysqlDb()
+		if db == nil {
+			panic(fmt.Sprintf("❌数据库 [%s] 初始化失败", c.config.DbName))
+		}
+		gormPool.Store(c.config.DbName, db)
 	}
 
 	// 初始化日志
@@ -44,11 +48,7 @@ func (c *Component) MustInitMysql() *Component {
 }
 
 func (c *Component) initMysqlDb() *gorm.DB {
-	// log.Println(packageName, "初始化数据库", c.config.DbName)
-	var db *gorm.DB
-	var err error
-
-	var vlog = new(log.Logger)
+	var vlog *log.Logger
 	if c.config.LoggerWriter == nil {
 		vlog = log.New(os.Stdout, "\r\n", log.LstdFlags|log.Lshortfile)
 	} else {
@@ -56,44 +56,42 @@ func (c *Component) initMysqlDb() *gorm.DB {
 	}
 
 	newLogger := logger.New(
-		vlog, // io writer
+		vlog,
 		logger.Config{
-			SlowThreshold: time.Second,       // Slow SQL threshold
-			LogLevel:      c.config.LogLevel, // Log level
+			SlowThreshold: time.Second,
+			LogLevel:      c.config.LogLevel,
 			Colorful:      true,
 		},
 	)
 
-	gconfig := gorm.Config{
+	// 1. 尝试打开连接
+	db, err := gorm.Open(mysql.Open(c.config.Dsn), &gorm.Config{
 		Logger: newLogger,
-	}
+	})
 
-	for db, err = gorm.Open(mysql.Open(c.config.Dsn), &gconfig); err != nil; {
+	// 2. 核心改进：先判断 err，如果连接失败立刻返回 nil
+	if err != nil {
 		re := regexp.MustCompile(`tcp\((.*?)\)`)
 		match := re.FindStringSubmatch(c.config.Dsn)
+		host := "unknown"
 		if len(match) > 1 {
-			log.Println(packageName, "❌数据库连接异常", match[1], c.config.DbName, err)
+			host = match[1]
 		}
-		time.Sleep(5 * time.Second)
-		db, err = gorm.Open(mysql.Open(c.config.Dsn), &gconfig)
+		log.Printf("[%s] ❌数据库连接异常 Host:%s, DB:%s, Err:%v", packageName, host, c.config.DbName, err)
+		return nil // 发现错误立即返回，避免后续 db.DB() 崩溃
 	}
 
-	if idb, err := db.DB(); err != nil {
-		log.Println(packageName, "❌数据库获取异常", c.config.DbName, err)
+	// 3. 获取底层连接池进行配置
+	idb, err := db.DB()
+	if err != nil {
+		log.Printf("[%s] ❌获取底层DB对象失败: %v", packageName, err)
 		return nil
-	} else {
-		// ==>  用于设置连接池中空闲连接的最大数量(10)
-		idb.SetMaxIdleConns(c.config.MaxIdleConns)
-
-		// ==>  设置打开数据库连接的最大数量(100)
-		idb.SetMaxOpenConns(c.config.MaxOpenConns)
-
-		// 最大时间
-		idb.SetConnMaxLifetime(c.config.MaxLifetime)
-
-		// 设置 callback
-		// otgorm.AddGormCallbacks(db)
-
-		return db
 	}
+
+	// 4. 设置连接池参数
+	idb.SetMaxIdleConns(c.config.MaxIdleConns)   // ==>  用于设置连接池中空闲连接的最大数量(10)
+	idb.SetMaxOpenConns(c.config.MaxOpenConns)   // ==>  设置打开数据库连接的最大数量(100)
+	idb.SetConnMaxLifetime(c.config.MaxLifetime) // 最大时间
+
+	return db
 }

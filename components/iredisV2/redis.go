@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"log"
 	"sync"
+	"time"
 )
 
 const name = "redis"
@@ -14,24 +15,26 @@ const name = "redis"
 var redisMgrPools sync.Map
 
 type RedisMgr struct {
-	ctx    context.Context
-	cancel context.CancelFunc
+	client redis.UniversalClient
 	opts   *options
-	sfg    singleflight.Group // singleFlight
-
-	alias string
+	sfg    singleflight.Group
+	alias  string
 }
 
+// RedisInit 初始化
 func RedisInit(alias string, opts ...Option) *RedisMgr {
+	// 1. 雙重檢查 (DCL) 防止併發初始化造成的連接洩漏
+	if v, ok := redisMgrPools.Load(alias); ok {
+		return v.(*RedisMgr)
+	}
+
 	o := defaultOptions()
 	for _, opt := range opts {
 		opt(o)
 	}
+
 	if o.client == nil {
-		// 如果指定了 MasterName 选项，那么返回哨兵模式的客户端 - FailoverClient
-		// 如果选项 Addrs 的数量为两个或多个，那么返回集群模式的客户端 - ClusterClient
-		// 否则就返回单节点的客户端
-		o.client = redis.NewUniversalClient(&redis.UniversalOptions{
+		client := redis.NewUniversalClient(&redis.UniversalOptions{
 			Addrs:        o.addrs,
 			DB:           o.db,
 			Username:     o.username,
@@ -39,72 +42,59 @@ func RedisInit(alias string, opts ...Option) *RedisMgr {
 			MaxRetries:   o.maxRetries,
 			PoolSize:     o.poolSize,
 			MinIdleConns: o.minIdleConns,
+			DialTimeout:  o.dialTimeout,
 		})
 
-		// 检测
-		_, err := o.client.Ping(o.ctx).Result()
-		if err != nil {
-			panic(err)
+		// 使用一個短暫的超時 Context 進行 Ping 測試
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := client.Ping(ctx).Err(); err != nil {
+			log.Printf("[%s] ❌ Redis Alias:%s 連接失敗: %v", name, alias, err)
+			panic(err) // 啟動時連不上通常需要報警
 		}
+		o.client = client
 	}
 
-	l := &RedisMgr{}
-	l.ctx, l.cancel = context.WithCancel(o.ctx)
-	l.opts = o
+	l := &RedisMgr{
+		client: o.client,
+		opts:   o,
+		alias:  alias,
+	}
 
-	// alias
-	l.alias = alias
+	// 存入池中
+	actual, loaded := redisMgrPools.LoadOrStore(alias, l)
+	mgr := actual.(*RedisMgr)
 
-	_, loaded := redisMgrPools.LoadOrStore(alias, l)
 	if loaded {
-		l.printRedisPool("命中池", l.opts.client.PoolStats())
+		// 如果是被其他協程搶先存入了，則關閉當前重複創建的連接
+		if l.client != mgr.client {
+			l.client.Close()
+		}
+		mgr.printRedisPool("命中池", mgr.client.PoolStats())
 	} else {
-		l.printRedisPool("初始化", l.opts.client.PoolStats())
+		mgr.printRedisPool("初始化成功", mgr.client.PoolStats())
 	}
 
-	return l
+	return mgr
 }
 
-// GetRedisMgr 获取 redis 实例
-func GetRedisMgr(alias string) (*RedisMgr, error) {
-	if v, ok := redisMgrPools.Load(alias); ok {
-		mgr := v.(*RedisMgr)
-		return mgr, nil
-	} else {
-		return nil, fmt.Errorf("%s: reidsMgr不存在,请先初始化", alias)
+// GetClient 直接獲取原生客戶端
+func GetClient(alias string) (redis.UniversalClient, error) {
+	v, ok := redisMgrPools.Load(alias)
+	if !ok {
+		return nil, fmt.Errorf("redis: alias %s 未初始化", alias)
 	}
-}
-
-// GetRedis 获取 redis 实例
-func GetRedis(alias string) (redis.UniversalClient, error) {
-	if v, ok := redisMgrPools.Load(alias); ok {
-		mgr := v.(*RedisMgr)
-		return mgr.opts.client, nil
-	} else {
-		return nil, fmt.Errorf("%s: reids不存在,请先初始化", alias)
-	}
-}
-
-func CloseAll() {
-	redisMgrPools.Range(func(key, value interface{}) bool {
-		mgr := value.(*RedisMgr)
-		mgr.opts.client.Close()
-		redisMgrPools.Delete(key)
-		return true
-	})
+	return v.(*RedisMgr).client, nil
 }
 
 func (c *RedisMgr) printRedisPool(msg string, stats *redis.PoolStats) {
-	log.Printf("[%s] Alias:%s, Sserver=%s Hits=%d Misses=%d Timeouts=%d TotalConns=%d IdleConns=%d StaleConns=%d %s \n",
+	log.Printf("[%s] Alias:%s, Addrs:%v, TotalConns:%d, IdleConns:%d, %s \n",
 		name,
-		c.opts.addrs,
 		c.alias,
-		stats.Hits,
-		stats.Misses,
-		stats.Timeouts,
+		c.opts.addrs,
 		stats.TotalConns,
 		stats.IdleConns,
-		stats.StaleConns,
 		msg,
 	)
 }
