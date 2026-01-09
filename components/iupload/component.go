@@ -48,6 +48,10 @@ func (that *Component) Upload(file *multipart.FileHeader, folder string, fileNam
 	if e = that.checkFile(file, fileType); e != nil {
 		return
 	}
+
+	// 1. 安全处理：强制提取文件名，防止路径穿越
+	fileName = path.Base(fileName)
+
 	// 映射目录
 	directory := that.config.UploadDirectory
 	// 打开源文件

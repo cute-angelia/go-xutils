@@ -12,6 +12,6 @@ tag:
 	git add .
 	git commit -am "redis & mysql 优化"
 	git push origin master
-	git tag v1.8.74
+	git tag v1.8.75
 	git push --tags
 	@echo "\n tags 发布中..."
