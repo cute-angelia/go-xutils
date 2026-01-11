@@ -25,21 +25,26 @@ func CreateOrUpdate(orm *gorm.DB, table string, data map[string]interface{}, id 
 }
 
 // GetPageData 统一版
-func GetPageData(db *gorm.DB, model interface{}, page int, perPage int) (interface{}, int64, error) {
+func GetPageData[T any](db *gorm.DB, page int, perPage int) ([]T, int64, error) {
+	var data []T
 	var total int64
-	// 使用 Session(NewDB) 保证并发安全
-	tx := db.Session(&gorm.Session{})
 
+	// 1. 必须先指定 Model，否则 Count 不知道查哪张表
+	// 2. 使用 Session 保证隔离
+	tx := db.Session(&gorm.Session{}).Model(new(T))
+
+	// 获取总数
 	if err := tx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
+	// 获取分页数据
 	offset := (page - 1) * perPage
-	if err := tx.Offset(offset).Limit(perPage).Find(model).Error; err != nil {
+	if err := tx.Offset(offset).Limit(perPage).Find(&data).Error; err != nil {
 		return nil, total, err
 	}
 
-	return model, total, nil
+	return data, total, nil
 }
 
 // Convert 转化数据 dest => &dest

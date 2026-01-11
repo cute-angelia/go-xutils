@@ -1,7 +1,6 @@
 package itime
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -12,6 +11,132 @@ import (
 type TheTime struct {
 	unix int64
 }
+
+// 预定义时区，避免重复创建
+var (
+	shanghaiLoc = time.FixedZone("CST", 8*3600)
+)
+
+// FormatOption ======================================== Functional Options ========================================
+// Option 定義函數特徵
+type FormatOption func(tm *time.Time, layout *string)
+
+// WithSetCST 选项：转换为CST China Standard Time (UTC+8)
+func WithSetCST() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		*tm = tm.In(shanghaiLoc)
+	}
+}
+
+// WithFormatLayout 自定義格式
+func WithFormatLayout(newLayout string) FormatOption {
+	return func(tm *time.Time, layout *string) {
+		*layout = newLayout
+	}
+}
+
+func WithFormatOnlyYear() FormatOption {
+	return WithFormatLayout("2006")
+}
+
+// WithFormatOnlyDate 預定義的快捷格式選項：僅輸出日期部分 (2006-01-02)
+func WithFormatOnlyDate() FormatOption {
+	return WithFormatLayout("2006-01-02")
+}
+
+// WithFormatOnlyTime 預定義的快捷格式選項：僅輸出時間部分 (15:04:05)
+func WithFormatOnlyTime() FormatOption {
+	return WithFormatLayout("15:04:05")
+}
+
+// WithSetStartOfDay 将时间设置为当天的 00:00:00
+func WithSetStartOfDay() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		// 必须先处理时区，再计算零点，否则跨时区转换会导致日期跳变
+		y, m, d := tm.Date()
+		*tm = time.Date(y, m, d, 0, 0, 0, 0, tm.Location())
+	}
+}
+
+// WithSetEndOfDay 将时间设置为当天的 23:59:59
+func WithSetEndOfDay() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		y, m, d := tm.Date()
+		*tm = time.Date(y, m, d, 23, 59, 59, 0, tm.Location())
+	}
+}
+
+// WithSetISO8601 切换格式为 RFC3339 (ISO8601 标准)
+func WithSetISO8601() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		*layout = time.RFC3339
+	}
+}
+
+// WithSetStartOfWeek 将时间调整为本周一的 00:00:00
+func WithSetStartOfWeek() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		loc := tm.Location()
+
+		// Go 的 Weekday: Sunday=0, Monday=1, ..., Saturday=6
+		weekday := int(tm.Weekday())
+
+		// 计算距离本周一的差值
+		// 如果是周日(0)，距离周一就是 -6 天
+		// 如果是周一(1)，距离周一就是 0 天
+		// 如果是周二(2)，距离周一就是 -1 天
+		offset := 1 - weekday
+		if weekday == 0 {
+			offset = -6
+		}
+
+		// 重新构造该时区下的周一零点
+		*tm = time.Date(tm.Year(), tm.Month(), tm.Day(), 0, 0, 0, 0, loc).
+			AddDate(0, 0, offset)
+	}
+}
+
+// WithSetEndOfWeek 获得当前周的初始和结束日期
+func WithSetEndOfWeek() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		// 1. 获取当前 tm 的时区（可能是 Local，也可能是 WithCST 设定的）
+		loc := tm.Location()
+
+		// 2. 修正周日为 7 的逻辑
+		weekday := int(tm.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+
+		// 3. 计算距离周日的差值
+		daysToSunday := 7 - weekday
+
+		// 4. 重新构造该时区下的周日最后一秒
+		*tm = time.Date(tm.Year(), tm.Month(), tm.Day(), 23, 59, 59, 0, loc).
+			AddDate(0, 0, daysToSunday)
+	}
+}
+
+// WithSetStartOfMonth 将时间调整为本月 1 号的 00:00:00
+func WithSetStartOfMonth() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		y, m, _ := tm.Date()
+		// 直接构造本月 1 号
+		*tm = time.Date(y, m, 1, 0, 0, 0, 0, tm.Location())
+	}
+}
+
+// WithSetEndOfMonth 将时间调整为本月最后一天的 23:59:59
+func WithSetEndOfMonth() FormatOption {
+	return func(tm *time.Time, layout *string) {
+		y, m, _ := tm.Date()
+		// 逻辑：下个月的 1 号，减去 1 秒（或者 AddDate(0, 1, -1) 后设为 23:59:59）
+		firstOfNextMonth := time.Date(y, m+1, 1, 0, 0, 0, 0, tm.Location())
+		*tm = firstOfNextMonth.Add(-time.Second)
+	}
+}
+
+// ======================================== Functional Options End ========================================
 
 // NewUnixNow return unix timestamp of current time
 func NewUnixNow() *TheTime {
@@ -82,32 +207,6 @@ func (t *TheTime) GetMillisecond() int64 {
 	return t.GetTime().UnixNano() / int64(time.Millisecond)
 }
 
-// GetTimeZero 获取零点
-func (t *TheTime) GetTimeZero() *TheTime {
-	timeStr := t.FormatDate()
-	t1, _ := time.ParseInLocation("2006-01-02", timeStr, time.Local)
-	return NewTime(t1)
-}
-
-// GetMonthStartDay 获得当前月的初始天
-func (t *TheTime) GetMonthStartDay() *TheTime {
-	now := t.GetTime()
-	currentYear, currentMonth, _ := now.Date()
-	currentLocation := now.Location()
-	firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
-	return NewUnix(firstOfMonth.Unix())
-}
-
-// GetMonthEndDay 获得当前月的终
-func (t *TheTime) GetMonthEndDay() *TheTime {
-	now := t.GetTime()
-	currentYear, currentMonth, _ := now.Date()
-	currentLocation := now.Location()
-	firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
-	lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
-	return NewUnix(lastOfMonth.Unix())
-}
-
 // GetWeekDayChinese 中国的周码 （1，2，3，4，5，6，7）
 func (t *TheTime) GetWeekDayChinese() int {
 	now := t.GetTime()
@@ -118,71 +217,25 @@ func (t *TheTime) GetWeekDayChinese() int {
 	}
 }
 
-// GetWeekStartDay 获得当前周的初始和结束日期
-func (t *TheTime) GetWeekStartDay() *TheTime {
-	now := t.GetTime()
-	offset := int(time.Monday - now.Weekday())
-	//周日做特殊判断 因为time.Monday = 0
-	if offset > 0 {
-		offset = -6
-	}
-
-	lastoffset := int(time.Saturday - now.Weekday())
-	//周日做特殊判断 因为time.Monday = 0
-	if lastoffset == 6 {
-		lastoffset = -1
-	}
-
-	firstOfWeek := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, offset)
-	return NewUnix(firstOfWeek.Unix())
-}
-
-// GetWeekEndDay 获得当前周的初始和结束日期
-func (t *TheTime) GetWeekEndDay() *TheTime {
-	now := t.GetTime()
-	offset := int(time.Monday - now.Weekday())
-	//周日做特殊判断 因为time.Monday = 0
-	if offset > 0 {
-		offset = -6
-	}
-	lastoffset := int(time.Saturday - now.Weekday())
-	//周日做特殊判断 因为time.Monday = 0
-	if lastoffset == 6 {
-		lastoffset = -1
-	}
-	lastOfWeeK := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, lastoffset+1)
-	return NewUnix(lastOfWeeK.Unix())
+func (t *TheTime) AddDate(years int, months int, days int) *TheTime {
+	t.GetTime().AddDate(years, months, days)
+	return t
 }
 
 // --------------------- format -----------------------
 
-// Format return the time string 'yyyy-mm-dd hh:mm:ss' of unix time
-func (t *TheTime) Format() string {
-	return time.Unix(t.unix, 0).Format("2006-01-02 15:04:05")
-}
+// Format 格式化时间字符串
+func (t *TheTime) Format(opts ...FormatOption) string {
+	if t == nil {
+		return ""
+	}
+	// 1. 初始狀態：預設格式與本地時間
+	tm := time.Unix(t.unix, 0)
+	layout := "2006-01-02 15:04:05"
 
-func (t *TheTime) FormatDate() string {
-	return time.Unix(t.unix, 0).Format("2006-01-02")
-}
-
-func (t *TheTime) FormatTime() string {
-	return time.Unix(t.unix, 0).Format("15:04:05")
-}
-
-func (t *TheTime) FormatTimeZeroSec() string {
-	return fmt.Sprintf("%s 00:00:00", t.FormatDate())
-}
-
-func (t *TheTime) FormatTimeLastSec() string {
-	return fmt.Sprintf("%s 23:59:59", t.FormatDate())
-}
-
-// FormatForTpl return the time string which format is specified tpl
-func (t *TheTime) FormatForTpl(tpl string) string {
-	return time.Unix(t.unix, 0).Format(tpl)
-}
-
-// FormatIso8601 return iso8601 time string
-func (t *TheTime) FormatIso8601() string {
-	return time.Unix(t.unix, 0).Format(time.RFC3339)
+	// 2. 執行所有選項操作
+	for _, opt := range opts {
+		opt(&tm, &layout)
+	}
+	return tm.Format(layout)
 }
