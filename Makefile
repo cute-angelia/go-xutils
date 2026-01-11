@@ -10,8 +10,8 @@ up:
 tag:
 	git pull origin master
 	git add .
-	git commit -am "redis & mysql 优化"
+	git commit -am "update"
 	git push origin master
-	git tag v1.8.77
+	git tag v1.8.78
 	git push --tags
 	@echo "\n tags 发布中..."

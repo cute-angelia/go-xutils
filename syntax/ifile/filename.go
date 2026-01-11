@@ -3,8 +3,9 @@ package ifile
 import (
 	"fmt"
 	"github.com/cute-angelia/go-xutils/syntax/irandom"
-	"github.com/cute-angelia/go-xutils/utils/generator/snowflake"
+	"github.com/cute-angelia/go-xutils/syntax/isnowflake"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -62,10 +63,11 @@ func (f fileName) GetDir() string {
 
 func (f fileName) CleanUrl() string {
 	newName := f.uri
-	if strings.Contains(f.uri, "?") {
-		newName = strings.Split(newName, "?")[0]
+	if i := strings.Index(newName, "?"); i != -1 {
+		newName = newName[:i]
 	}
-	return newName
+	// path.Clean 可以去除路径中的 ../ 或多余的斜杠
+	return path.Clean(newName)
 }
 
 // name 保持原有名字
@@ -83,22 +85,11 @@ func (f fileName) GetNameTimeline() string {
 // 算法：未来时间减去当前时间， 为了防止串号，增加 nano 长度
 func (f fileName) GetNameTimelineReverse(withDate bool) string {
 	ext := f.GetExt()
-	/* 自定义算法，未来时间相减
-	// 3021-01-01 01:01:01
-	etime := int64(3152944195300000000)
-	respName := ""
-	respName = fmt.Sprintf("%s%d", f.prefix, etime-time.Now().UnixNano())
-	if withDate {
-		respName = fmt.Sprintf("%s_%s", respName, strings.Replace(time.Now().Format("20060102150405.9999"), ".", "", 1))
-	}
-	// 加随机数
-	// randomstr := fmt.Sprintf("%d", time.Now().UnixNano())
-	// respName = fmt.Sprintf("%s_%s", respName, randomstr[10:len(randomstr)])
-	*/
-
 	// 雪花算法
-	n, _ := snowflake.NewSnowId(1)
-	diffTime := int64(991529441953000000) - n.Int64()
+	id, _ := isnowflake.GetSnowflake().NextID()
+	// 使用足够大的常数，或使用 2026 年推荐的基准：1<<63 - 1
+	const maxUint64 = 18446744073709551615
+	diffTime := maxUint64 - id
 
 	respName := ""
 	if withDate {
@@ -116,8 +107,7 @@ func (f fileName) GetNameTimeDate() string {
 
 // name 按雪花算法
 func (f fileName) GetNameSnowFlow() string {
-	newName := f.CleanUrl()
-	n, _ := snowflake.NewSnowId(1)
-	newName = fmt.Sprintf("%s%s%s%s", f.prefix, n.String(), f.suffix, f.GetExt())
-	return newName
+	id, _ := isnowflake.GetSnowflake().NextID()
+	// 使用 strconv 转换数字，使用 + 拼接字符串
+	return f.prefix + strconv.FormatUint(id, 10) + f.suffix + f.GetExt()
 }

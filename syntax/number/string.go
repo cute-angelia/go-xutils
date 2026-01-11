@@ -1,28 +1,36 @@
 package random
 
 import (
-	"math/rand"
-	"time"
+	"math/rand/v2" // 2026 年推荐使用 v2 包
+	"unsafe"
 )
 
-type letter string
+type Letter string
 
 const (
-	LetterAbc            = letter("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	LetterAbcLower       = letter("abcdefghijklmnopqrstuvwxyz")
-	LetterAbcUpper       = letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	LetterNumAndLowAbc   = letter("abcdefghijklmnopqrstuvwxyz0123456789")
-	LetterNumAndUpperAbc = letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	LetterAll            = letter("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	LetterAbc            = Letter("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	LetterAbcLower       = Letter("abcdefghijklmnopqrstuvwxyz")
+	LetterAbcUpper       = Letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	LetterNumAndLowAbc   = Letter("abcdefghijklmnopqrstuvwxyz0123456789")
+	LetterNumAndUpperAbc = Letter("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+	LetterAll            = Letter("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 )
 
-// RandString generate random string
-// see https://stackoverflow.com/questions/22892120/how-to-generate-a-random-string-of-a-fixed-length-in-go
-func RandString(length int, letter letter) string {
-	b := make([]byte, length)
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := range b {
-		b[i] = letter[r.Int63()%int64(len(letter))]
+// RandString 2026 优化版
+func RandString(length int, letters Letter) string {
+	if length <= 0 {
+		return ""
 	}
-	return string(b)
+
+	b := make([]byte, length)
+	l := uint32(len(letters))
+
+	for i := 0; i < length; i++ {
+		// 2026 推荐：直接使用 rand.Uint32N，底层使用高性能 ChaCha8 算法
+		// 无需手动创建 rand.NewSource，并发安全且零锁竞争
+		b[i] = letters[rand.Uint32N(l)]
+	}
+
+	// 使用 unsafe 方式转换字符串（Go 1.22+ 常见优化，减少一次内存拷贝）
+	return unsafe.String(&b[0], length)
 }

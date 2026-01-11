@@ -1,7 +1,6 @@
 package weworkrobot
 
 import (
-	"fmt"
 	"github.com/guonaihong/gout"
 	"log"
 	"time"
@@ -17,51 +16,52 @@ func newComponent(cfg *config) *Component {
 	}
 }
 
-func (self Component) generateContent(content string) string {
-	timenow := ""
-	if self.config.WithTime {
-		timenow = time.Now().Format("2006-01-02 15:04:05")
+func (c *Component) generateContent(content string) string {
+	// 2026 实践：使用结构体指针接收器 (c *Component) 减少拷贝开销
+	res := ""
+	if c.config.WithTime {
+		res += time.Now().Format("2006-01-02 15:04:05") + " "
 	}
 
-	topic := ""
-	if len(self.config.Topic) > 0 {
-		topic = " [" + self.config.Topic + "]"
+	if len(c.config.From) > 0 {
+		res += "[" + c.config.From + "] "
 	}
 
-	from := ""
-	if len(self.config.From) > 0 {
-		topic = " [" + self.config.From + "]"
+	if len(c.config.Topic) > 0 {
+		res += "[" + c.config.Topic + "] "
 	}
 
-	return fmt.Sprintf("%s%s%s%s", timenow, from, topic, content)
+	return res + content
 }
 
-func (self Component) SendText(content string) error {
-	content = self.generateContent(content)
+func (c *Component) SendText(content string) error {
+	fullContent := c.generateContent(content)
 
-	return gout.POST(self.config.Uri).SetJSON(gout.H{
+	// 企业微信文本消息支持艾特
+	return gout.POST(c.config.Uri).SetJSON(gout.H{
 		"msgtype": "text",
 		"text": gout.H{
-			"content":               content,
-			"mentioned_list":        self.config.MentionedList,
-			"mentioned_mobile_list": self.config.MentionedMobileList,
+			"content":               fullContent,
+			"mentioned_list":        c.config.MentionedList,
+			"mentioned_mobile_list": c.config.MentionedMobileList,
 		},
-	}).Debug(self.config.Debug).F().Retry().Attempt(self.config.Retry).WaitTime(time.Second).Do()
+	}).Debug(c.config.Debug).F().Retry().Attempt(c.config.Retry).WaitTime(time.Second).Do()
 }
 
-func (self Component) SendMarkDown(content string) error {
-	content = self.generateContent(content)
+func (c *Component) SendMarkDown(content string) error {
+	fullContent := c.generateContent(content)
 
-	return gout.POST(self.config.Uri).SetJSON(gout.H{
+	// 2026 提醒：企业微信 Markdown 消息体里不支持 mentioned_list 字段
+	// 如果需要艾特，请在 content 中加入 <@userid> 或 <@all>
+	return gout.POST(c.config.Uri).SetJSON(gout.H{
 		"msgtype": "markdown",
 		"markdown": gout.H{
-			"content":               content,
-			"mentioned_list":        self.config.MentionedList,
-			"mentioned_mobile_list": self.config.MentionedMobileList,
+			"content": fullContent,
 		},
-	}).Debug(self.config.Debug).F().Retry().Attempt(self.config.Retry).WaitTime(time.Second).Do()
+	}).Debug(c.config.Debug).F().Retry().Attempt(c.config.Retry).WaitTime(time.Second).Do()
 }
 
 func logError(key string, err error) {
-	log.Println(PackageName, ":error:"+key+":", err)
+	// 假设 PackageName 是包内定义的常量
+	log.Printf("[%s] error at %s: %v", "weworkrobot", key, err)
 }

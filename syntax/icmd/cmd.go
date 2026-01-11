@@ -28,34 +28,46 @@ func main() {
 	}
 }
 */
-
+// Exec 执行外部命令并带超时控制
 func Exec(exePath string, param []string, timeout time.Duration) cmd.Status {
+	// 2026 建议：如果不需要捕获所有输出，建议在 cmd.Options 中关闭内存缓冲
 	findCmd := cmd.NewCmd(exePath, param...)
-	statusChan := findCmd.Start() // non-blocking
+	statusChan := findCmd.Start()
 
+	// 1. 修正 Ticker 泄漏：使用 context 或显式停止
 	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop() // 确保函数退出时停止定时器
 
-	// Print last line of stdout every 2s
+	done := make(chan struct{})
+
+	// 2. 状态监控协程
 	go func() {
-		for range ticker.C {
-			status := findCmd.Status()
-			n := len(status.Stdout)
-			if n > 0 {
-				log.Println(status.Stdout[n-1])
+		for {
+			select {
+			case <-ticker.C:
+				status := findCmd.Status()
+				n := len(status.Stdout)
+				if n > 0 {
+					log.Println("Current Last Line:", status.Stdout[n-1])
+				}
+			case <-done:
+				return
 			}
 		}
 	}()
 
-	// Stop command after time
-	go func() {
-		<-time.After(timeout)
-		findCmd.Stop()
-	}()
-	// Block waiting for command to exit, be stopped, or be killed
-	finalStatus := <-statusChan
+	// 3. 超时控制
+	var finalStatus cmd.Status
+	select {
+	case finalStatus = <-statusChan:
+		// 命令正常结束
+	case <-time.After(timeout):
+		// 响应超时
+		_ = findCmd.Stop()
+		finalStatus = <-statusChan
+	}
 
-	defer findCmd.Stop()
-
-	// log.Println(ijson.Pretty(finalStatus))
+	// 4. 清理资源
+	close(done)
 	return finalStatus
 }

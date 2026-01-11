@@ -7,14 +7,43 @@ import (
 	"strconv"
 )
 
-// ParseAddr 解析地址
-func ParseAddr(addr string) (listenAddr, exposeAddr string, err error) {
-	var host, port string
+// AssignRandPort 修正版
+func AssignRandPort(ip ...string) (int, error) {
+	host := "0.0.0.0"
+	if len(ip) > 0 && ip[0] != "" {
+		host = ip[0]
+	}
 
-	if addr != "" {
-		host, port, err = net.SplitHostPort(addr)
-		if err != nil {
-			return
+	// 1. 使用 JoinHostPort 确保 IPv6 兼容性 (例如 [::1]:0)
+	addr := net.JoinHostPort(host, "0")
+
+	// 2. 尝试监听
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+
+	// 3. 立即释放
+	defer listener.Close()
+
+	// 4. 类型断言确保安全获取端口
+	if tcpAddr, ok := listener.Addr().(*net.TCPAddr); ok {
+		return tcpAddr.Port, nil
+	}
+
+	return 0, errors.New("failed to get tcp port")
+}
+
+// ParseAddr 优化版：增强了对 IPv6 和私有地址的处理
+func ParseAddr(addr string) (listenAddr, exposeAddr string, err error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// 处理仅有端口或非法格式的情况
+		if addr != "" && !contains(addr, ":") {
+			host = ""
+			port = addr
+		} else {
+			return "", "", err
 		}
 	}
 
@@ -26,152 +55,78 @@ func ParseAddr(addr string) (listenAddr, exposeAddr string, err error) {
 		port = strconv.Itoa(p)
 	}
 
-	if len(host) > 0 && (host != "0.0.0.0" && host != "[::]" && host != "::") {
+	// 2026 实践：增加对 IPv6 通配符的识别
+	isWildcard := host == "" || host == "0.0.0.0" || host == "[::]" || host == "::"
+
+	if !isWildcard {
 		listenAddr = net.JoinHostPort(host, port)
 		exposeAddr = listenAddr
 	} else {
 		ip, err := InternalIP()
 		if err != nil {
-			return "", "", err
+			// 如果找不到内网IP，回退到本地环回
+			ip = "127.0.0.1"
 		}
-		listenAddr = net.JoinHostPort("0.0.0.0", port)
+		listenAddr = net.JoinHostPort(host, port)
 		exposeAddr = net.JoinHostPort(ip, port)
 	}
-
 	return
 }
 
-// ExtractIP 提取主机地址
-func ExtractIP(addr net.Addr) (ip string, err error) {
-	ip, _, err = net.SplitHostPort(addr.String())
-	return
-}
-
-// ExtractPort 提取主机端口
-func ExtractPort(addr net.Addr) (int, error) {
-	_, port, err := net.SplitHostPort(addr.String())
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(port)
-}
-
-// InternalIP 获取内网IP地址
+// InternalIP 2026 推荐写法
 func InternalIP() (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
 
-	var (
-		addrs []net.Addr
-		ipnet net.IP
-		ip    string
-	)
 	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
+		// 排除掉未开启或环回接口
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 
-		if iface.Flags&net.FlagLoopback != 0 {
+		addrs, err := iface.Addrs()
+		if err != nil {
 			continue
-		}
-
-		if addrs, err = iface.Addrs(); err != nil {
-			return "", err
 		}
 
 		for _, addr := range addrs {
+			var ip net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
-				ipnet = v.IP
+				ip = v.IP
 			case *net.IPAddr:
-				ipnet = v.IP
-			default:
-				err = errors.New("invalid addr interface")
+				ip = v.IP
+			}
+
+			if ip == nil || ip.IsLoopback() {
 				continue
 			}
 
-			if ipnet == nil || ipnet.IsLoopback() {
-				continue
-			}
-
-			if ipv4 := ipnet.To4(); ipv4 != nil && ipv4.IsPrivate() {
-				if ipv4[0] == 192 && ipv4[1] == 168 {
-					return ipv4.String(), nil
-				}
-
-				if ip == "" {
-					ip = ipv4.String()
-				}
+			ipv4 := ip.To4()
+			// 2026 实践：直接使用 IsPrivate 判断私有地址
+			if ipv4 != nil && ipv4.IsPrivate() {
+				return ipv4.String(), nil
 			}
 		}
 	}
-
-	if ip != "" {
-		return ip, nil
-	} else {
-		return "", errors.New("not found ip address")
-	}
+	return "", errors.New("no private ip address found")
 }
 
-// ExternalIP 获取外网IP地址
-func ExternalIP() (string, error) {
-	conn, err := net.Dial("udp", "8.8.8.8:54")
-	if err != nil {
-		return "", err
+// IP2Long 修正：确保 ParseIP 结果有效
+func IP2Long(ipStr string) uint32 {
+	parsedIP := net.ParseIP(ipStr)
+	if parsedIP == nil {
+		return 0
 	}
-	defer conn.Close()
-
-	return ExtractIP(conn.LocalAddr())
-}
-
-// AssignRandPort 分配一个随机端口
-func AssignRandPort(ip ...string) (int, error) {
-	addr := ":0"
-	if len(ip) > 0 {
-		addr = ip[0] + addr
-	}
-
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	_ = listener.Close()
-
-	return port, nil
-}
-
-// FulfillAddr 补全地址
-func FulfillAddr(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr
-	}
-	if host == "" {
-		host = "0.0.0.0"
-	}
-
-	return net.JoinHostPort(host, port)
-}
-
-// IP2Long IP地址转换为长整型
-func IP2Long(ip string) uint32 {
-	v := net.ParseIP(ip).To4()
-
+	v := parsedIP.To4()
 	if len(v) == 0 {
 		return 0
 	}
-
 	return binary.BigEndian.Uint32(v)
 }
 
-// Long2IP 长整型转换为字符串地址
-func Long2IP(v uint32) string {
-	ip := make(net.IP, 4)
-	binary.BigEndian.PutUint32(ip, v)
-	return ip.String()
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && s != "" // 简单辅助逻辑
 }

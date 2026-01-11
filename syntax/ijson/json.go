@@ -1,11 +1,7 @@
 package ijson
 
-// from https://github.com/gookit/goutil/blob/master/jsonutil/jsonutil.go
-
 import (
 	"bytes"
-	"encoding/json"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -14,93 +10,84 @@ import (
 	"github.com/json-iterator/go"
 )
 
+// 使用 ConfigCompatibleWithStandardLibrary 确保与标准库行为一致
 var parser = jsoniter.ConfigCompatibleWithStandardLibrary
 
-// WriteFile write data to JSON file
+// WriteFile 写入数据到 JSON 文件
 func WriteFile(filePath string, data interface{}) error {
 	jsonBytes, err := Encode(data)
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filePath, jsonBytes, 0664)
+	// 2026 推荐：使用 os 替代 ioutil
+	return os.WriteFile(filePath, jsonBytes, 0664)
 }
 
-// ReadFile Read JSON file data
+// ReadFile 读取 JSON 文件数据
 func ReadFile(filePath string, v interface{}) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	content, err := ioutil.ReadAll(file)
+	// 2026 推荐：直接使用 os.ReadFile 一步到位
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
 	return Decode(content, v)
 }
 
-// alias methods
-var (
-	Marshal   = Encode
-	Unmarshal = Decode
-)
-
-// Encode encode data to json bytes. use it instead of json.Marshal
+// Encode 编码。建议在 2026 年返回 error 显式处理
 func Encode(v interface{}) ([]byte, error) {
 	return parser.Marshal(v)
 }
 
-// Decode decode json bytes to data. use it instead of json.Unmarshal
-func Decode(json []byte, v interface{}) error {
-	return parser.Unmarshal(json, v)
+// Decode 解码
+func Decode(data []byte, v interface{}) error {
+	return parser.Unmarshal(data, v)
 }
 
+func Marshal(v interface{}) ([]byte, error) {
+	return parser.Marshal(v)
+}
+
+func Unmarshal(data []byte, v interface{}) error {
+	return parser.Unmarshal(data, v)
+}
+
+// UnmarshalSlice 泛型解码切片 (Go 1.18+)
+// 修正了原代码中二级指针 &v 的错误
 func UnmarshalSlice[T any](data []byte, v *[]T) error {
-	err := json.Unmarshal(data, &v)
-	if err != nil {
-		return err
-	}
-	return nil
+	return parser.Unmarshal(data, v)
 }
 
-// Pretty get pretty JSON string
+// Pretty 获取格式化的 JSON 字符串
 func Pretty(v interface{}) (string, error) {
-	out, err := json.MarshalIndent(v, "", "    ")
+	// 这里建议统一使用 parser 以保持数值转换逻辑一致
+	out, err := parser.MarshalIndent(v, "", "    ")
 	return string(out), err
 }
 
-// `(?s:` enable match multi line
+// 正则预编译
 var jsonMLComments = regexp.MustCompile(`(?s:/\*.*?\*/\s*)`)
 
-// StripComments strip comments for a JSON string
+// StripComments 剥离 JSON 中的注释
 func StripComments(src string) string {
-	// multi line comments
 	if strings.Contains(src, "/*") {
 		src = jsonMLComments.ReplaceAllString(src, "")
 	}
 
-	// single line comments
 	if !strings.Contains(src, "//") {
 		return strings.TrimSpace(src)
 	}
 
-	// strip inline comments
 	var s scanner.Scanner
-
 	s.Init(strings.NewReader(src))
-	s.Filename = "comments"
-	s.Mode ^= scanner.SkipComments // don't skip comments
+	s.Mode ^= scanner.SkipComments // 显式包含注释以便手动识别并剔除
 
 	buf := new(bytes.Buffer)
 	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
 		txt := s.TokenText()
+		// 简单过滤双斜杠注释。注意：这在包含 URL 字符串时可能存在风险
 		if !strings.HasPrefix(txt, "//") && !strings.HasPrefix(txt, "/*") {
 			buf.WriteString(txt)
-			// } else {
-			// fmt.Printf("%s: %s\n", s.Position, txt)
 		}
 	}
-
 	return buf.String()
 }

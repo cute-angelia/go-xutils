@@ -94,7 +94,7 @@ func WithHookError(hookError bool) Option {
 
 func WithLogPath(logPath string) Option {
 	return func(c *Container) {
-		ifile.MkParentDir(logPath)
+		ifile.Mkdir(logPath, 0755)
 		c.config.LogPath = logPath
 	}
 }

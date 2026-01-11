@@ -3,7 +3,6 @@ package apiV3
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/cute-angelia/go-xutils/syntax/irandom"
 	"github.com/cute-angelia/go-xutils/utils/iAes"
 	"github.com/cute-angelia/go-xutils/utils/iXor"
@@ -60,18 +59,10 @@ type Pagination struct {
 
 // CalcTotal 计算总页数
 func (p Pagination) CalcTotal(count, pageSize int64) int64 {
-	var totalPages int64
-
-	if pageSize == 0 {
-		pageSize = 1
+	if pageSize <= 0 {
+		return 0
 	}
-
-	if count%pageSize == 0 {
-		totalPages = count / pageSize
-	} else {
-		totalPages = count/pageSize + 1
-	}
-	return totalPages
+	return (count + pageSize - 1) / pageSize
 }
 
 func NewPagination(count, pageNo, pageSize int64) Pagination {
@@ -111,7 +102,9 @@ func (that *api) Success() {
 	// json
 	that.w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(that.w).Encode(that.respStruct); err != nil {
-		http.Error(that.w, err.Error(), 500)
+		// 2026 实践：编码失败属于服务器内部错误，记录日志但不一定发送给客户端
+		log.Printf("JSON Encode Error: %v", err)
+		http.Error(that.w, "Internal Server Error", 500)
 		return
 	}
 }
@@ -182,7 +175,7 @@ func (that *api) cryptoData() {
 	crypto := that.r.URL.Query().Get("crypto")
 	if len(crypto) > 0 {
 		var randomKey = irandom.RandString(16, irandom.LetterAll)
-		cryptoId := fmt.Sprintf("%s%s", that.cryptoKey, randomKey)
+		cryptoId := that.cryptoKey + randomKey
 		datam, _ := json.Marshal(that.respStruct.Data)
 
 		// Crypto 加密 Key：使用AES-GCM模式,处理密钥、认证、加密一次完成
@@ -198,32 +191,32 @@ func (that *api) cryptoData() {
 	}
 }
 
-func (that *api) logr(msg string) {
-	// 数据
+func (that *api) logr(tag string) {
+	defer func() { recover() }()
+
+	// 为了不破坏 respStruct 的 Data 类型，这里局部序列化
 	dataReq, _ := json.Marshal(that.reqStruct)
 	dataResp, _ := json.Marshal(that.respStruct)
 
-	// header
 	uid := that.r.Header.Get("jwt_uid")
 	appStartTime := that.r.Header.Get("jwt_app_start_time")
 
-	log.Println("------------------------------------------------------------------------------")
+	costMsg := ""
 	if len(appStartTime) > 0 {
-		un, _ := strconv.Atoi(appStartTime)
-		t2 := time.Unix(int64(un), 0)
-		tc := time.Since(t2)
-
-		flags := "Millisecond"
-		if tc < time.Second {
-			tc = tc / 10
-		} else {
-			flags = "Second"
+		// 2026 修正：处理毫秒级时间戳
+		if un, err := strconv.ParseInt(appStartTime, 10, 64); err == nil {
+			t2 := time.UnixMilli(un) // 假设前端传的是毫秒
+			if un < 2000000000 {
+				t2 = time.Unix(un, 0)
+			} // 兼容秒
+			cost := time.Since(t2)
+			costMsg = "| Cost: " + cost.String()
 		}
-
-		log.Printf("用户: %s, TimeCost: %v %s", uid, tc, flags)
 	}
 
-	log.Printf("%s 用户: %s, 请求地址: %s, 请求参数: %s, 请求数据: %s,", msg, uid, that.r.URL.Path, that.r.URL.RawQuery, dataReq)
-	log.Printf("%s 用户: %s, 请求地址: %s, 响应数据: %s", msg, uid, that.r.URL.Path, dataResp)
+	log.Println("------------------------------------------------------------------------------")
+	log.Printf("%s 用户: %s %s", tag, uid, costMsg)
+	log.Printf("地址: %s, 数据: %s", that.r.URL.Path, dataReq)
+	log.Printf("响应: %s", dataResp)
 	log.Println("------------------------------------------------------------------------------")
 }

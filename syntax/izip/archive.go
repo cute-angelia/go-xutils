@@ -3,17 +3,17 @@ package izip
 import (
 	"archive/zip"
 	"bytes"
-	"github.com/cute-angelia/go-xutils/syntax/ifile"
-	"github.com/cute-angelia/go-xutils/utils/iprogressbar"
+	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
+	"strings"
+
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/utils/iprogressbar"
 )
 
-// ZipFiles compresses one or many files into a single zip archive file.
-// Param 1: filename is the output zip file's name.
-// Param 2: files is a list of files to add to the zip.
+// ZipFiles 压缩文件列表
 func ZipFiles(filename string, files []string) error {
 	newZipFile, err := os.Create(filename)
 	if err != nil {
@@ -22,9 +22,13 @@ func ZipFiles(filename string, files []string) error {
 	defer newZipFile.Close()
 
 	zipWriter := zip.NewWriter(newZipFile)
-	defer zipWriter.Close()
+	// 2026 实践：显式 Close 以便捕获写入索引时的错误
+	defer func() {
+		if err := zipWriter.Close(); err != nil {
+			fmt.Printf("close zip writer error: %v\n", err)
+		}
+	}()
 
-	// Add files to zip
 	for _, file := range files {
 		if err = addFileToZip(zipWriter, file); err != nil {
 			return err
@@ -33,20 +37,24 @@ func ZipFiles(filename string, files []string) error {
 	return nil
 }
 
-// ZipBytes 压缩单个字节文件
-// https://golang.cafe/blog/golang-zip-file-example.html
-func ZipBytes(archiveName string, name string, data []byte) error {
+// ZipBytes 压缩字节数据
+func ZipBytes(archiveName string, entryName string, data []byte) error {
 	archive, err := os.Create(archiveName)
 	if err != nil {
 		return err
 	}
 	defer archive.Close()
-	zipWriter := zip.NewWriter(archive)
-	defer zipWriter.Close()
-	w1, _ := zipWriter.Create(name)
-	_, err = io.Copy(w1, bytes.NewReader(data))
-	defer zipWriter.Close()
-	return err
+
+	zw := zip.NewWriter(archive)
+	w, err := zw.Create(entryName)
+	if err != nil {
+		return err
+	}
+
+	if _, err = io.Copy(w, bytes.NewReader(data)); err != nil {
+		return err
+	}
+	return zw.Close() // 显式关闭以确保数据刷入
 }
 
 func addFileToZip(zipWriter *zip.Writer, filename string) error {
@@ -56,7 +64,6 @@ func addFileToZip(zipWriter *zip.Writer, filename string) error {
 	}
 	defer fileToZip.Close()
 
-	// Get the file information
 	info, err := fileToZip.Stat()
 	if err != nil {
 		return err
@@ -67,12 +74,8 @@ func addFileToZip(zipWriter *zip.Writer, filename string) error {
 		return err
 	}
 
-	// Using FileInfoHeader() above only uses the basename of the file. If we want
-	// to preserve the folder structure we can overwrite this with the full path.
-	header.Name = path.Base(filename)
-
-	// Change to deflate to gain better compression
-	// see http://golang.org/pkg/archive/zip/#pkg-constants
+	// 2026 建议：统一使用正斜杠，并只保留基础文件名防止路径污染
+	header.Name = filepath.Base(filename)
 	header.Method = zip.Deflate
 
 	writer, err := zipWriter.CreateHeader(header)
@@ -80,57 +83,75 @@ func addFileToZip(zipWriter *zip.Writer, filename string) error {
 		return err
 	}
 
-	finfo, _ := fileToZip.Stat()
-	bar := iprogressbar.GetProgressbar(int(finfo.Size()), "zip:"+filename)
+	// 进度条处理：MultiWriter
+	bar := iprogressbar.GetProgressbar(int(info.Size()), "zip:"+filename)
 	_, err = io.Copy(io.MultiWriter(writer, bar), fileToZip)
 	return err
 }
 
-// Unzip a zip archive
-// from https://blog.csdn.net/wangshubo1989/article/details/71743374
-func Unzip(archive, targetDir string) (err error) {
+// Unzip 解压文件，修复 Zip Slip 漏洞
+func Unzip(archive, targetDir string) error {
 	reader, err := zip.OpenReader(archive)
-	defer reader.Close()
 	if err != nil {
-		return
+		return err
+	}
+	defer reader.Close()
+
+	// 确保目标目录存在
+	if err := os.MkdirAll(targetDir, ifile.DefaultDirPerm); err != nil {
+		return err
 	}
 
-	if err = os.MkdirAll(targetDir, ifile.DefaultDirPerm); err != nil {
-		return
-	}
+	for _, f := range reader.File {
+		// 1. 安全性检查：修复 Zip Slip 漏洞
+		fullPath, err := sanitizeExtractPath(f.Name, targetDir)
+		if err != nil {
+			return err
+		}
 
-	for _, file := range reader.File {
-		fullPath := filepath.Join(targetDir, file.Name)
-		if file.FileInfo().IsDir() {
-			err = os.MkdirAll(fullPath, file.Mode())
-			if err != nil {
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(fullPath, f.Mode()); err != nil {
 				return err
 			}
-
 			continue
 		}
 
-		fileReader, err := file.Open()
-		if err != nil {
+		// 确保父目录存在
+		if err := os.MkdirAll(filepath.Dir(fullPath), ifile.DefaultDirPerm); err != nil {
 			return err
 		}
 
-		targetFile, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
-		if err != nil {
-			fileReader.Close()
-			return err
-		}
-
-		_, err = io.Copy(targetFile, fileReader)
-
-		// close all
-		fileReader.Close()
-		targetFile.Close()
-
-		if err != nil {
+		// 解压文件
+		if err := extractFile(f, fullPath); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	return
+// sanitizeExtractPath 防止路径穿越攻击
+func sanitizeExtractPath(filePath, targetDir string) (string, error) {
+	dest := filepath.Join(targetDir, filePath)
+	// 检查解压后的绝对路径是否以 targetDir 开头
+	if !strings.HasPrefix(dest, filepath.Clean(targetDir)+string(os.PathSeparator)) {
+		return "", fmt.Errorf("illegal file path (Zip Slip): %s", filePath)
+	}
+	return dest, nil
+}
+
+func extractFile(f *zip.File, destPath string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, rc)
+	return err
 }

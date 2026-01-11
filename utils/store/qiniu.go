@@ -1,10 +1,8 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	file "github.com/cute-angelia/go-xutils/syntax/ifile"
 	"github.com/qiniu/go-sdk/v7/auth"
 	"github.com/qiniu/go-sdk/v7/storage"
 	"io"
@@ -143,51 +141,51 @@ func (self *Qiniu) UploadByForm(f io.Reader, filesize int64, key string) (string
 	return ret.Key, nil
 }
 
-func (self *Qiniu) UploadByUrl(url string, key string) (string, error) {
-	body, err := file.GetFileWithSrcWithGout(url)
-	if err != nil {
-		return "", err
-	}
-
-	putPolicy := storage.PutPolicy{
-		Scope: self.Bucket + ":" + key,
-	}
-
-	mac := auth.New(self.Ak, self.Sk)
-	upToken := putPolicy.UploadToken(mac)
-
-	//设置代理
-	// proxyURL := "http://localhost:8888"
-	// proxyURI, _ := url.Parse(proxyURL)
-
-	//构建代理client对象
-	client := http.Client{
-		Transport: &http.Transport{
-			// Proxy: http.ProxyURL(proxyURI),
-		},
-	}
-
-	// 构建表单上传的对象
-	formUploader := storage.NewFormUploaderEx(&self.QiniuConfig, &storage.Client{Client: &client})
-	ret := storage.PutRet{}
-	// 可选配置
-	//putExtra := storage.PutExtra{
-	//	Params: map[string]string{
-	//		"x:name": "github logo",
-	//	},
-	//}
-	//putExtra.NoCrc32Check = true
-
-	data := bytes.NewReader(body)
-	dataLen := int64(len(body))
-
-	if err := formUploader.Put(context.Background(), &ret, upToken, key, data, dataLen, &storage.PutExtra{}); err != nil {
-		log.Println(err)
-		return "", err
-	}
-	log.Println("七牛上传成功：", url, ret.Key)
-	return ret.Key, nil
-}
+//func (self *Qiniu) UploadByUrl(url string, key string) (string, error) {
+//	body, err := ifile.GetFileWithSrc(url)
+//	if err != nil {
+//		return "", err
+//	}
+//
+//	putPolicy := storage.PutPolicy{
+//		Scope: self.Bucket + ":" + key,
+//	}
+//
+//	mac := auth.New(self.Ak, self.Sk)
+//	upToken := putPolicy.UploadToken(mac)
+//
+//	//设置代理
+//	// proxyURL := "http://localhost:8888"
+//	// proxyURI, _ := url.Parse(proxyURL)
+//
+//	//构建代理client对象
+//	client := http.Client{
+//		Transport: &http.Transport{
+//			// Proxy: http.ProxyURL(proxyURI),
+//		},
+//	}
+//
+//	// 构建表单上传的对象
+//	formUploader := storage.NewFormUploaderEx(&self.QiniuConfig, &storage.Client{Client: &client})
+//	ret := storage.PutRet{}
+//	// 可选配置
+//	//putExtra := storage.PutExtra{
+//	//	Params: map[string]string{
+//	//		"x:name": "github logo",
+//	//	},
+//	//}
+//	//putExtra.NoCrc32Check = true
+//
+//	data := bytes.NewReader(body)
+//	dataLen := int64(len(body))
+//
+//	if err := formUploader.Put(context.Background(), &ret, upToken, key, data, dataLen, &storage.PutExtra{}); err != nil {
+//		log.Println(err)
+//		return "", err
+//	}
+//	log.Println("七牛上传成功：", url, ret.Key)
+//	return ret.Key, nil
+//}
 
 // 列出 keys
 func (self *Qiniu) ListKeys() {
