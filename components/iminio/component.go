@@ -400,28 +400,35 @@ func (e *Component) DeleteObjectWithBucketAndKey(bucket, key string) error {
 }
 
 // GetBucketAndObjectName 根据路径获取bucket 和 object name
-func (e *Component) GetBucketAndObjectName(objectNameWithBucket string) (string, string) {
-	if len(objectNameWithBucket) > 0 {
-
-		// 处理 http 问题
-		if strings.Contains(objectNameWithBucket, "http:") || strings.Contains(objectNameWithBucket, "https:") {
-			temparray := strings.Split(objectNameWithBucket, "/")
-			if len(temparray) >= 3 {
-				objectNameWithBucket = strings.Join(temparray[3:], "/")
-			}
-		}
-
-		objectNameWithBucket = strings.TrimLeft(objectNameWithBucket, "/")
-		temp := strings.Split(objectNameWithBucket, "/")
-		if len(temp) > 1 {
-			objkey := temp[1:len(temp)]
-			return temp[0], strings.Join(objkey, "/")
-		} else {
-			return objectNameWithBucket, ""
-		}
-	} else {
+func (e *Component) GetBucketAndObjectName(input string) (string, string) {
+	if input == "" {
 		return "", ""
 	}
+
+	path := input
+	// 1. 如果是完整 URL，解析出路徑部分
+	if strings.Contains(input, "://") {
+		u, err := url.Parse(input)
+		if err != nil {
+			return "", ""
+		}
+		path = u.Path // 獲取 /bucket/object/name...
+	}
+
+	// 2. 清洗路徑：去除首尾斜槓並處理連續斜槓
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return "", ""
+	}
+
+	// 3. 分割 bucket 和 objectName
+	parts := strings.SplitN(path, "/", 2) // 只分割成兩份
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+
+	// 只有 bucket，沒有 object
+	return parts[0], ""
 }
 
 // 快速

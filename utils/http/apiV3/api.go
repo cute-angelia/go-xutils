@@ -19,8 +19,8 @@ type api struct {
 	isHasPage bool // 是否分页
 	pager     Pagination
 
-	cryptoType int32  // 加密方式：默认2
-	cryptoKey  string // 是否加密：不为空为加密
+	cryptoType CryptoType // 加密方式：默认2
+	cryptoKey  string     // 是否加密：不为空为加密
 
 	isLogOn bool // 打印日志
 
@@ -46,6 +46,7 @@ type Ext struct {
 	ShowTips bool `json:"showTips"` // 弹消息提示
 }
 
+// Pagination 分页结构体
 type Pagination struct {
 	//  当前页
 	PageNo int64 `json:"pageNo"`
@@ -71,14 +72,20 @@ func NewPagination(count, pageNo, pageSize int64) Pagination {
 	return paginationor
 }
 
-func NewApi(w http.ResponseWriter, r *http.Request) *api {
-	return &api{
+// Pagination 分页结构体 end
+func NewApi(w http.ResponseWriter, r *http.Request, opts ...Option) *api {
+	a := &api{
 		w:          w,
 		r:          r,
-		isLogOn:    true,                              // 默认：打开日志
-		cryptoType: 2,                                 // 默认：加密方式
-		cryptoKey:  CryptoEr.GetRequestContentType(r), // 默认：获取key
+		isLogOn:    true,                              // 默認值
+		cryptoType: CryptoTypeXOR,                     // 默認值
+		cryptoKey:  CryptoEr.GetRequestContentType(r), // 默認值
 	}
+	// 應用所有傳入的選項
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a
 }
 
 // Decode request
@@ -140,35 +147,6 @@ func (that *api) Error(err error) {
 		http.Error(that.w, err.Error(), 500)
 		return
 	}
-}
-
-// SetData set data
-func (that *api) SetData(data interface{}, msg string) *api {
-	that.respStruct.Data = data
-	that.respStruct.Msg = msg
-	return that
-}
-
-func (that *api) SetPage(pager *Pagination) *api {
-	that.respStruct.Pagination = pager
-	return that
-}
-
-func (that *api) SetExt(ext *Ext) *api {
-	that.respStruct.Ext = ext
-	return that
-}
-
-func (that *api) SetLog(on bool) {
-	that.isLogOn = on
-}
-func (that *api) SetCryptoType(cryptoType int32) *api {
-	that.cryptoType = cryptoType
-	return that
-}
-func (that *api) SetCryptoKey(cryptoKey string) *api {
-	that.cryptoKey = cryptoKey
-	return that
 }
 
 func (that *api) cryptoData() {
