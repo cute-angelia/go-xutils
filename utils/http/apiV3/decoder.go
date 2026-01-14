@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gorilla/schema"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -15,6 +16,8 @@ var queryDecoder = schema.NewDecoder()
 
 func init() {
 	queryDecoder.IgnoreUnknownKeys(true)
+	// 告訴 schema 插件，去讀取結構體上的 "form" tag
+	queryDecoder.SetAliasTag("form")
 }
 
 type decoder struct{}
@@ -54,10 +57,15 @@ func (d decoder) Decode(r *http.Request, v interface{}) (resp interface{}, err e
 		err = xml.NewDecoder(r.Body).Decode(v)
 
 	case conType == ContentTypeForm:
-		if err := r.ParseForm(); err != nil {
-			return nil, err
+
+		if len(r.PostForm) > 0 {
+			err = queryDecoder.Decode(v, r.PostForm)
+		} else {
+			if err := r.ParseForm(); err != nil {
+				log.Println(err)
+			}
+			err = queryDecoder.Decode(v, r.PostForm)
 		}
-		err = queryDecoder.Decode(v, r.PostForm)
 
 	case conType == ContentTypeMultipart:
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
