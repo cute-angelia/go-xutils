@@ -185,9 +185,7 @@ func (that *api) SetExt(ext *Ext) *api {
 func (that *api) Success() {
 	that.respStruct.Code = 0
 	// 日志
-	if that.isLogOn {
-		that.logr("[success]")
-	}
+	that.logr("[success]")
 
 	// 加密
 	that.cryptoData()
@@ -219,9 +217,7 @@ func (that *api) Error(err error) {
 		that.respStruct.Msg = err.Error()
 	}
 
-	if that.isLogOn {
-		that.logr("[error]")
-	}
+	that.logr("[error]")
 
 	// 加密
 	that.cryptoData()
@@ -281,6 +277,11 @@ func (that *api) logr(tag string) {
 	log.Println("------------------------------------------------------------------------------")
 	log.Printf("%s 用户: %s %s", tag, uid, costMsg)
 	log.Printf("地址: %s, 数据: %s", that.r.URL.Path, dataReq)
-	log.Printf("响应: %s", dataResp)
+
+	if that.isLogOn {
+		log.Printf("响应: %s", dataResp)
+	} else {
+		log.Printf("响应: %s", "關閉列印")
+	}
 	log.Println("------------------------------------------------------------------------------")
 }

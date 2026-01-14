@@ -70,78 +70,63 @@ func (e *Component) GetUrl(bucket, key string, opts ...UrlOption) string {
 		}
 	}
 
-	var finalUrl string
-
 	// 1. 处理缓存逻辑
-	var hashkey string
+	hashkey := e.GenerateHashKey(1, bucket, key, urlOpt.Version)
 	if urlOpt.Cache != nil && !urlOpt.Rebuild {
-		hashkey = e.GenerateHashKey(1, bucket, key, urlOpt.Expiry, urlOpt.Version)
 		if cachedData, err := urlOpt.Cache.Get(hashkey); err == nil && len(cachedData) > 0 {
-			finalUrl = cachedData
+			return cachedData
 		}
 	}
 
-	// 2. 生成基础 URL (如果缓存没中)
-	if finalUrl == "" {
+	var finalUrl string
+	if urlOpt.Expiry > 0 {
+		// 私有簽名邏輯
+		reqParams := make(url.Values)
+		if urlOpt.Version != "" {
+			reqParams.Set("v", urlOpt.Version)
+		}
+
+		presignedURL, err := e.Client.PresignedGetObject(urlOpt.Context, bucket, key, urlOpt.Expiry, reqParams)
+		if err != nil {
+			log.Println("minio 簽名失敗 ", err)
+			return ""
+		}
+		finalUrl = presignedURL.String()
+	} else {
+		// 公共地址邏輯
+		baseUrl := strings.TrimSuffix(e.Client.EndpointURL().String(), "/")
+		finalUrl = baseUrl + "/" + path.Join(bucket, key)
+		if urlOpt.Version != "" {
+			finalUrl = fmt.Sprintf("%s?v=%s", finalUrl, urlOpt.Version)
+		}
+	}
+
+	// 3. 寫入快取 (關鍵修復)
+	if urlOpt.Cache != nil && finalUrl != "" {
+		cacheTTL := urlOpt.Expiry
 		if urlOpt.Expiry > 0 {
-			// --- 修改点：将版本号纳入签名计算 ---
-			var reqParams url.Values
-			if urlOpt.Version != "" {
-				reqParams = make(url.Values)
-				// 将 v=xxx 放入参数，MinIO 签名时会将其包含进去
-				reqParams.Set("v", fmt.Sprintf("%d", urlOpt.Version))
+			// 重要：快取時間要比簽名過期時間短，預留 5 分鐘緩衝
+			buffer := 5 * time.Minute
+			if cacheTTL > buffer {
+				cacheTTL -= buffer
+			} else {
+				// 如果設定的有效期本來就很短，就不快取，避免失效
+				return finalUrl
 			}
-
-			// 需要签名的私有地址
-			presignedURL, err := e.Client.PresignedGetObject(urlOpt.Context, bucket, key, urlOpt.Expiry, nil)
-			if err != nil {
-				log.Println("minio 簽名失敗 ", err)
-				return ""
-			}
-			finalUrl = presignedURL.String()
-			// 既然已经包含在签名里了，清空 Version 避免最后重复拼接
-			urlOpt.Version = ""
 		} else {
-			// 公共拼接地址
-			baseUrl := strings.TrimSuffix(e.Client.EndpointURL().String(), "/")
-			finalUrl = baseUrl + "/" + path.Join(bucket, key)
+			// 公共地址快取 24 小時
+			cacheTTL = 24 * time.Hour
 		}
-
-		// 3. 写入缓存
-		if urlOpt.Cache != nil && finalUrl != "" {
-			// 缓存时间略短于签名时间
-			ttl := urlOpt.Expiry
-			if ttl > 5*time.Minute {
-				ttl -= 5 * time.Minute
-			}
-			urlOpt.Cache.Set(hashkey, finalUrl, ttl)
-		}
-	}
-
-	// 4. 处理版本号（仅针对公共地址，私有地址在上面已处理并清空）
-	if urlOpt.Version != "" {
-		connector := "?"
-		if strings.Contains(finalUrl, "?") {
-			connector = "&"
-		}
-		finalUrl = fmt.Sprintf("%s%sv=%s", finalUrl, connector, urlOpt.Version)
+		urlOpt.Cache.Set(hashkey, finalUrl, cacheTTL)
 	}
 
 	return finalUrl
 }
 
 // GenerateHashKey 支持傳入任意數量的參數來生成唯一哈希
-func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix string, extras ...interface{}) string {
+func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix string, version string) string {
 	// 基礎組分
-	base := fmt.Sprintf("%d:%s:%s", bucketType, bucket, prefix)
-
-	// 處理額外參數（如 Expiry, Version 等）
-	if len(extras) > 0 {
-		for _, extra := range extras {
-			base += fmt.Sprintf(":%v", extra)
-		}
-	}
-
+	base := fmt.Sprintf("%d:%s:%s:%s", bucketType, bucket, prefix, version)
 	return hash.NewEncodeMD5(base)
 }
 

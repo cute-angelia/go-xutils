@@ -25,22 +25,24 @@ func CreateOrUpdate(orm *gorm.DB, table string, data map[string]interface{}, id 
 }
 
 // GetPageData 统一版
-func GetPageData[T any](db *gorm.DB, page int, perPage int) ([]T, int64, error) {
+func GetPageData[T any](query *gorm.DB, page int, perPage int) ([]T, int64, error) {
 	var data []T
 	var total int64
 
-	// 1. 必须先指定 Model，否则 Count 不知道查哪张表
-	// 2. 使用 Session 保证隔离
-	tx := db.Session(&gorm.Session{}).Model(new(T))
+	// 【關鍵 1】建立兩個完全獨立的 Session 副本
+	// 這樣 Count 和 Find 的條件才不會互相干擾（例如 Offset 跑進 Count 裡）
+	countTx := query.Session(&gorm.Session{}).Debug()
+	findTx := query.Session(&gorm.Session{}).Debug()
 
-	// 获取总数
-	if err := tx.Count(&total).Error; err != nil {
+	// 1. 執行 Count SQL
+	// 注意：必須傳入 Model 否則 GORM 不知道查哪張表
+	if err := countTx.Model(new(T)).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// 获取分页数据
+	// 2. 執行 Find SQL
 	offset := (page - 1) * perPage
-	if err := tx.Offset(offset).Limit(perPage).Find(&data).Error; err != nil {
+	if err := findTx.Offset(offset).Limit(perPage).Find(&data).Error; err != nil {
 		return nil, total, err
 	}
 

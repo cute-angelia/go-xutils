@@ -50,15 +50,15 @@ require (
 	golang.org/x/image v0.18.0
 	golang.org/x/net v0.47.0
 	golang.org/x/oauth2 v0.27.0
-	golang.org/x/sync v0.18.0
-	golang.org/x/text v0.31.0
+	golang.org/x/sync v0.19.0
+	golang.org/x/text v0.33.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
-	gorm.io/driver/mysql v1.4.7
+	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/postgres v1.6.0
-	gorm.io/driver/sqlite v1.5.2
+	gorm.io/driver/sqlite v1.6.0
 	gorm.io/driver/sqlserver v1.4.2
-	gorm.io/gorm v1.25.10
+	gorm.io/gorm v1.31.1
 )
 
 require (
@@ -134,6 +134,7 @@ require (
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/plugin/dbresolver v1.6.2 // indirect
 )
 
 replace github.com/tidwall/gjson => github.com/tidwall/gjson v1.9.3
