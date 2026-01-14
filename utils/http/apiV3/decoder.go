@@ -17,7 +17,7 @@ var queryDecoder = schema.NewDecoder()
 func init() {
 	queryDecoder.IgnoreUnknownKeys(true)
 	// 告訴 schema 插件，去讀取結構體上的 "form" tag
-	queryDecoder.SetAliasTag("form")
+	queryDecoder.SetAliasTag("json") // schema, form
 }
 
 type decoder struct{}
