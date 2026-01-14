@@ -42,7 +42,15 @@ const (
 )
 
 func GetContentType(s string) TypeContent {
-	s = strings.TrimSpace(strings.Split(s, ";")[0])
+	// 1. 全部轉為小寫並去除兩端空格
+	s = strings.ToLower(strings.TrimSpace(s))
+
+	// 2. 取分號前的主體部分
+	if parts := strings.Split(s, ";"); len(parts) > 0 {
+		s = strings.TrimSpace(parts[0])
+	}
+
+	// 3. 匹配
 	switch s {
 	case "text/plain":
 		return ContentTypePlainText
@@ -56,6 +64,7 @@ func GetContentType(s string) TypeContent {
 		return ContentTypeForm
 	case "text/event-stream":
 		return ContentTypeEventStream
+	// 2026 建議：multipart 通常帶有 boundary，用 HasPrefix 或等於判斷
 	case "multipart/form-data":
 		return ContentTypeMultipart
 	default:

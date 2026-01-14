@@ -6,6 +6,7 @@ import (
 	"github.com/cute-angelia/go-xutils/syntax/irandom"
 	"github.com/cute-angelia/go-xutils/utils/iAes"
 	"github.com/cute-angelia/go-xutils/utils/iXor"
+	"github.com/go-ozzo/ozzo-validation/v4"
 	"log"
 	"net/http"
 	"strconv"
@@ -93,6 +94,91 @@ func (that *api) Decode(v interface{}) error {
 	body, err := Decoder.Decode(that.r, v)
 	that.reqStruct = body
 	return err
+}
+
+// Validation 接收 v 以及可選的額外規則
+/*
+req := RotateReq{}
+
+方式一：
+err := render.Validation(&req,
+    validation.Field(&req.MinioFullUrl, validation.Required, validation.Match(regexp.MustCompile(`^https?://`))),
+    validation.Field(&req.Position, validation.In(90, 180, 270)),
+)
+if err != nil {
+    render.Error(err)
+    return
+}
+
+
+方式二：
+// 實現接口，這樣 ValidateStruct 會自動調用這裡
+func (r RotateReq) Validate() error {
+    return validation.ValidateStruct(&r,
+        validation.Field(&r.MinioFullUrl, validation.Required),
+        validation.Field(&r.Position, validation.In(90, 180, 270)),
+    )
+}
+
+*/
+func (that *api) Validation(v interface{}, fields ...*validation.FieldRules) error {
+	// 1. 解析請求數據 (JSON/Form/Query)
+	if err := that.Decode(v); err != nil {
+		return err
+	}
+
+	// 2. 執行結構體基礎校驗 (基於結構體內的 Internal Validate 方法)
+	// 如果結構體實現了 validation.Validatable 接口，會自動執行
+	if err := validation.ValidateStruct(v, fields...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidMustLogin 檢查登入狀態，若未登入則輸出錯誤並返回 false
+func (that *api) ValidMustLogin() bool {
+	uid := that.GetUid()
+	if uid <= 0 {
+		that.ErrorCodeMsg(-401, "請先登入")
+		return false
+	}
+	return true
+}
+
+// GetUid 從 Header 中獲取 JWT 解析後的 UID
+func (that *api) GetUid() int32 {
+	val := that.r.Header.Get("jwt_uid")
+	if val == "" {
+		return 0
+	}
+	uid, err := strconv.Atoi(val)
+	if err != nil {
+		// 2026 實踐：記錄日誌但不中斷流程，返回 0 代表無效用戶
+		log.Printf("apiV3: invalid jwt_uid header: %v", val)
+		return 0
+	}
+	return int32(uid)
+}
+
+func (that *api) SetData(data interface{}) *api {
+	that.respStruct.Data = data
+	return that
+}
+
+func (that *api) SetMsg(msg string) *api {
+	that.respStruct.Msg = msg
+	return that
+}
+
+func (that *api) SetPage(pager *Pagination) *api {
+	that.respStruct.Pagination = pager
+	return that
+}
+
+func (that *api) SetExt(ext *Ext) *api {
+	that.respStruct.Ext = ext
+	return that
 }
 
 // Success 成功返回

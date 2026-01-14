@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-xutils/components/caches"
 	"github.com/cute-angelia/go-xutils/components/idownload"
 	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"github.com/cute-angelia/go-xutils/utils/generator/hash"
@@ -47,74 +46,103 @@ func newComponent(config *config) *Component {
 	}
 }
 
-// SignUrlPublic iminio.SignUrlPublic("blog-station/1669965002139224000.jpg")
-func (e *Component) SignUrlPublic(key string) string {
-	return e.Client.EndpointURL().String() + "/" + key
-}
-
-func (e *Component) SignUrlBucketAndKey(bucket, key string) string {
-	return e.Client.EndpointURL().String() + "/" + path.Join(bucket, key)
-}
-
-// SignUrlWithCache 获取链接 不带bucket
-func (e *Component) SignUrlWithCache(bucket string, key string, t time.Duration, cacheObj caches.Cache) (string, error) {
-
+func (e *Component) GetUrl(bucket, key string, opts ...UrlOption) string {
 	if key == "" {
-		return "", errors.New("key is empty")
-	}
-
-	hashkey := e.GenerateHashKey(1, bucket, key)
-	if cachedata, err := cacheObj.Get(hashkey); err == nil && len(cachedata) > 3 {
-		return cachedata, nil
-	} else {
-		reqParams := make(url.Values)
-		if presignedURL, err := e.Client.PresignedGetObject(context.Background(), bucket, key, t, reqParams); err != nil {
-			return "", err
-		} else {
-			return presignedURL.String(), cacheObj.Set(hashkey, presignedURL.String(), t)
-		}
-	}
-}
-
-// SignKeyWithCache 获取链接
-func (e *Component) SignKeyWithCache(key string, t time.Duration, cacheObj caches.Cache) string {
-	return e.SignCoverWithCache(key, t, cacheObj)
-}
-
-// SignCoverWithCache 获取链接 链接带 bucket
-func (e *Component) SignCoverWithCache(cover string, t time.Duration, cacheObj caches.Cache) string {
-	if strings.Contains(cover, "http") {
-		return cover
-	}
-	if len(cover) > 0 {
-		cover = strings.TrimLeft(cover, "/")
-		temp := strings.Split(cover, "/")
-		objkey := temp[1:len(temp)]
-		if len(objkey) == 1 {
-			// 避免空切片
-			if icover, err := e.SignUrlWithCache(temp[0], objkey[0], t, cacheObj); err != nil {
-				log.Println("sign error 1:", err)
-				return ""
-			} else {
-				return icover
-			}
-		} else {
-			if icover, err := e.SignUrlWithCache(temp[0], strings.Join(objkey, "/"), t, cacheObj); err != nil {
-				log.Println("sign error 2:", err)
-				return ""
-			} else {
-				return icover
-			}
-		}
-
-	} else {
+		log.Println("errors.New( key is empty )")
 		return ""
 	}
+
+	// 默认配置
+	urlOpt := &UrlOptions{
+		Context: context.Background(),
+	}
+	for _, opt := range opts {
+		opt(urlOpt)
+	}
+
+	// 2. 自動路徑處理：處理 bucket 和 key 連在一起的情況
+	if bucket == "" {
+		fullPath := strings.Trim(key, "/")
+		parts := strings.SplitN(fullPath, "/", 2)
+		if len(parts) == 2 {
+			bucket = parts[0]
+			key = parts[1]
+		}
+	}
+
+	var finalUrl string
+
+	// 1. 处理缓存逻辑
+	var hashkey string
+	if urlOpt.Cache != nil && !urlOpt.Rebuild {
+		hashkey = e.GenerateHashKey(1, bucket, key, urlOpt.Expiry, urlOpt.Version)
+		if cachedData, err := urlOpt.Cache.Get(hashkey); err == nil && len(cachedData) > 0 {
+			finalUrl = cachedData
+		}
+	}
+
+	// 2. 生成基础 URL (如果缓存没中)
+	if finalUrl == "" {
+		if urlOpt.Expiry > 0 {
+			// --- 修改点：将版本号纳入签名计算 ---
+			var reqParams url.Values
+			if urlOpt.Version != "" {
+				reqParams = make(url.Values)
+				// 将 v=xxx 放入参数，MinIO 签名时会将其包含进去
+				reqParams.Set("v", fmt.Sprintf("%d", urlOpt.Version))
+			}
+
+			// 需要签名的私有地址
+			presignedURL, err := e.Client.PresignedGetObject(urlOpt.Context, bucket, key, urlOpt.Expiry, nil)
+			if err != nil {
+				log.Println("minio 簽名失敗 ", err)
+				return ""
+			}
+			finalUrl = presignedURL.String()
+			// 既然已经包含在签名里了，清空 Version 避免最后重复拼接
+			urlOpt.Version = ""
+		} else {
+			// 公共拼接地址
+			baseUrl := strings.TrimSuffix(e.Client.EndpointURL().String(), "/")
+			finalUrl = baseUrl + "/" + path.Join(bucket, key)
+		}
+
+		// 3. 写入缓存
+		if urlOpt.Cache != nil && finalUrl != "" {
+			// 缓存时间略短于签名时间
+			ttl := urlOpt.Expiry
+			if ttl > 5*time.Minute {
+				ttl -= 5 * time.Minute
+			}
+			urlOpt.Cache.Set(hashkey, finalUrl, ttl)
+		}
+	}
+
+	// 4. 处理版本号（仅针对公共地址，私有地址在上面已处理并清空）
+	if urlOpt.Version != "" {
+		connector := "?"
+		if strings.Contains(finalUrl, "?") {
+			connector = "&"
+		}
+		finalUrl = fmt.Sprintf("%s%sv=%s", finalUrl, connector, urlOpt.Version)
+	}
+
+	return finalUrl
 }
 
-// GenerateHashKey 生成缓存
-func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix string) string {
-	return hash.NewEncodeMD5(fmt.Sprintf("%d%s%s", bucketType, bucket, prefix))
+// GenerateHashKey 支持傳入任意數量的參數來生成唯一哈希
+func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix string, extras ...interface{}) string {
+	// 基礎組分
+	base := fmt.Sprintf("%d:%s:%s", bucketType, bucket, prefix)
+
+	// 處理額外參數（如 Expiry, Version 等）
+	if len(extras) > 0 {
+		for _, extra := range extras {
+			base += fmt.Sprintf(":%v", extra)
+		}
+	}
+
+	return hash.NewEncodeMD5(base)
 }
 
 // GetObjectsByPage minio 获取分页对象数据
