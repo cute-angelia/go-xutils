@@ -49,8 +49,8 @@ func Suffix(fpath string) string {
 // FilterFilename 增强版正则
 func FilterFilename(name string) string {
 	// 增加对 : * \ 等字符的过滤，确保跨平台安全
-	regex := regexp.MustCompile(`[|&;$%@"<>()+,?:\s\x00-\x1f\\*]`)
-	return regex.ReplaceAllString(name, "")
+	regex := regexp.MustCompile(`[|&;$%@"<>()+,?:\s\x00-\x1f\\*/]`)
+	return regex.ReplaceAllString(name, "-")
 }
 
 // GetHomeDir 获取当前用户家目录
