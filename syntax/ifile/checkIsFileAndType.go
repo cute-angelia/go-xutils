@@ -36,14 +36,16 @@ func IsDir(path string) bool {
 	return false
 }
 
-// CheckIsEmptyDir 检查是否为空文件夹
-func CheckIsEmptyDir(dirpath string) bool {
-	files, err := os.ReadDir(dirpath)
+// CheckIsEmptyDir 检查目录是否为空（或只包含系统隐藏文件）
+func CheckIsEmptyDir(name string) bool {
+	entries, err := os.ReadDir(name)
 	if err != nil {
 		return false
 	}
-	for _, file := range files {
-		if file.Name() != ".DS_Store" {
+
+	for _, entry := range entries {
+		// 如果包含非隐藏文件（比如不是 .DS_Store），则认为不为空
+		if entry.Name() != ".DS_Store" && entry.Name() != "Thumbs.db" {
 			return false
 		}
 	}

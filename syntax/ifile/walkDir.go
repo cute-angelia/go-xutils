@@ -2,6 +2,7 @@ package ifile
 
 import (
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,7 +38,37 @@ func GetParentDirectory(directory string) string {
 	return base
 }
 
+// GetAllPaths 递归获取 basePath 下的所有文件夹和文件
+// 专门为 CleanDir 设计：文件夹列表会按深度反转，确保先处理子目录
+func GetAllPaths(basePath string) (dirs []string, files []string, err error) {
+	err = filepath.WalkDir(basePath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == basePath {
+			return nil
+		}
+
+		if d.IsDir() {
+			dirs = append(dirs, path)
+		} else {
+			files = append(files, path)
+		}
+		return nil
+	})
+
+	// 重要：反转目录顺序
+	// 这样 dirs 的顺序会从 [a, a/b, a/b/c] 变成 [a/b/c, a/b, a]
+	// 确保 CleanDir 循环时先删最深层的空目录
+	for i, j := 0, len(dirs)-1; i < j; i, j = i+1, j-1 {
+		dirs[i], dirs[j] = dirs[j], dirs[i]
+	}
+
+	return dirs, files, err
+}
+
 // GetDepthOnePathsAndFilesIncludeExt 优化排序逻辑
+// 函数更适合用于 UI 文件列表展示（因为它有排序和后缀过滤）
 func GetDepthOnePathsAndFilesIncludeExt(dirPath string, exts ...string) (dirPaths []string, filePaths []string, err error) {
 	var targetExt string
 	if len(exts) > 0 {
@@ -125,4 +156,39 @@ func (a byNumber) Less(i, j int) bool {
 
 	// 兜底：原始文件名排序
 	return iname < jname
+}
+
+// GetFileMapList 递归获取文件夹及其文件列表的映射（不包括空文件夹）
+func GetFileMapList(searchDir string, data map[string][]string) map[string][]string {
+	// 确保 map 已初始化
+	if data == nil {
+		data = make(map[string][]string)
+	}
+
+	files, err := os.ReadDir(searchDir)
+	if err != nil {
+		log.Printf("GetFileMapList 错误 [%s]: %v\n", searchDir, err)
+		return data
+	}
+
+	// 使用你定义的 byNumber 进行排序
+	sort.Sort(byNumber(files))
+
+	for _, file := range files {
+		// 使用 filepath.Join 适配不同操作系统的路径符
+		fullPath := filepath.Join(searchDir, file.Name())
+
+		if file.IsDir() {
+			// 递归处理子目录
+			data = GetFileMapList(fullPath, data)
+		} else {
+			// 排除系统隐藏文件
+			if file.Name() == ".DS_Store" || file.Name() == "Thumbs.db" {
+				continue
+			}
+			// 将文件路径加入当前目录的 key 中
+			data[searchDir] = append(data[searchDir], fullPath)
+		}
+	}
+	return data
 }

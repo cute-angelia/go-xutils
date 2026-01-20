@@ -111,3 +111,46 @@ func DeleteFile(fpath string) error {
 	// 2026 生产标准：除非是 Debug 模式，否则不建议在库函数里直接 Println
 	return nil
 }
+
+// Mv 移動檔案，具備跨裝置/分區的相容性
+func Mv(src, dst string) error {
+	// 1. 首先嘗試使用原生的 os.Rename (效能最高)
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	// 2. 如果發生跨分區錯誤 (invalid cross-device link)，則改用 Copy + Delete
+	// 這裡不直接返回錯誤，而是進行手動拷貝
+	return moveCrossDevice(src, dst)
+}
+
+func moveCrossDevice(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	// 獲取原檔案權限
+	info, err := sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	// 建立目標檔案
+	destFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	// 拷貝內容
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	// 關閉檔案後再刪除原檔案
+	sourceFile.Close()
+	return os.Remove(src)
+}
