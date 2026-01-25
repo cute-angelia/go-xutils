@@ -42,7 +42,7 @@ func (c *Component) generateText(ext []string) (tempText string, err error) {
 		// log.Println(c.getTempText())
 		log.Println(ijson.Pretty(files))
 
-		if itempText, err := ifile.OpenLocalFile(text); err != nil {
+		if itempText, err := ifile.OpenFile(text, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
 			return "", err
 		} else {
 			defer itempText.Close()

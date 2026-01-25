@@ -48,7 +48,7 @@ func newComponent(config *config) *Component {
 
 func (e *Component) GetUrl(bucket, key string, opts ...UrlOption) string {
 	if key == "" {
-		log.Println("errors.New( key is empty )")
+		//log.Println("errors.New( key is empty )")
 		return ""
 	}
 
@@ -381,12 +381,18 @@ func (e *Component) PutObjectWithSrc(dnComponent *idownload.Component, uri strin
 
 // DeleteObject 删除文件
 func (e *Component) DeleteObject(objectNameWithBucket string) error {
+	// 1. 先进行 URL Query 解码
+	decodedPath, err := url.QueryUnescape(objectNameWithBucket)
+	if err != nil {
+		log.Println("删除解码失败", err)
+		return err // 或者处理解码失败
+	}
 	opts := minio.RemoveObjectOptions{}
-	bucket, objectName := e.GetBucketAndObjectName(objectNameWithBucket)
+	bucket, objectName := e.GetBucketAndObjectName(decodedPath)
 	if len(bucket) == 0 || len(objectName) == 0 {
 		return nil
 	}
-	err := e.Client.RemoveObject(context.Background(), bucket, objectName, opts)
+	err = e.Client.RemoveObject(context.Background(), bucket, objectName, opts)
 	if err != nil {
 		log.Println(PackageName, "删除对象失败：❌", fmt.Sprintf("Bucket:%s; Object:%s; 失败原因：", bucket, objectName), err)
 		return err
