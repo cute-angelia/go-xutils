@@ -232,25 +232,39 @@ func (e *Component) PutObject(bucket string, objectNameIn string, reader io.Read
 	if objectName, ok := e.CheckMode(objectNameIn); ok {
 		objectName = strings.Replace(objectName, "//", "/", -1)
 
-		// --- 核心修复：如果是 -1，不初始化进度条 ---
+		// --- 核心修复 1：优化内存分配 ---
+		if objectSize <= 0 {
+			// 如果是流式上传（size为-1），手动限制分片大小为 10MB
+			// 这样 SDK 内部的缓冲区就会被限制在 10MB 左右，而不是默认的数百MB
+			if objopt.PartSize == 0 {
+				objopt.PartSize = 10 * 1024 * 1024
+			}
+		}
+
+		// --- 核心修复 2：安全初始化进度条 ---
+		// 只有明确知道大小时才启用进度条，防止进度条逻辑因 -1 产生除零或计算异常
 		if objectSize > 0 {
 			objopt.Progress = progress.NewUploadProgress(objectSize)
+		} else {
+			// 确保流式上传时不带进度条
+			objopt.Progress = nil
 		}
-		// ---------------------------------------
 
+		// 执行上传
 		uploadInfo, err := e.Client.PutObject(context.Background(), bucket, objectName, reader, objectSize, objopt)
+
 		if err != nil {
-			log.Println(bucket, objectNameIn, err)
+			log.Println("Upload Failed:", bucket, objectNameIn, err)
 			return uploadInfo, err
 		}
 
 		if e.config.Debug {
-			log.Println("Successfully uploaded bytes: ", uploadInfo)
+			log.Printf("Successfully uploaded: %s/%s, Size: %d\n", bucket, objectName, uploadInfo.Size)
 		}
 		return uploadInfo, err
-	} else {
-		return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
 	}
+
+	return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
 }
 
 // FPutObject 上传-按存在文件
