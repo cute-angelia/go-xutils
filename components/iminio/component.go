@@ -133,6 +133,7 @@ func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix stri
 // GetObjectsByPage minio 获取分页对象数据
 // 1.分页
 // 2.可以指定文件后缀获取
+// 建議在文件上傳到 MinIO 時，文件名數字部分補零（例如：第009話），這樣 MinIO 默認的字典序就會是正確的自然排序，你原本的流式分頁代碼就能直接運行。
 func (e *Component) GetObjectsByPage(bucket string, prefix string, page int32, perpage int32, fileExt []string) (objs []string, notall bool) {
 	// 控制流程
 	count := int32(0)
@@ -231,14 +232,18 @@ func (e *Component) PutObject(bucket string, objectNameIn string, reader io.Read
 	if objectName, ok := e.CheckMode(objectNameIn); ok {
 		objectName = strings.Replace(objectName, "//", "/", -1)
 
-		// 创建上传进度条对象
-		objopt.Progress = progress.NewUploadProgress(objectSize)
+		// --- 核心修复：如果是 -1，不初始化进度条 ---
+		if objectSize > 0 {
+			objopt.Progress = progress.NewUploadProgress(objectSize)
+		}
+		// ---------------------------------------
 
 		uploadInfo, err := e.Client.PutObject(context.Background(), bucket, objectName, reader, objectSize, objopt)
 		if err != nil {
 			log.Println(bucket, objectNameIn, err)
 			return uploadInfo, err
 		}
+
 		if e.config.Debug {
 			log.Println("Successfully uploaded bytes: ", uploadInfo)
 		}
