@@ -3,10 +3,11 @@ package ibitcask
 import (
 	"errors"
 	"fmt"
-	"git.mills.io/prologic/bitcask"
 	"log"
 	"sync"
 	"time"
+
+	"git.mills.io/prologic/bitcask"
 )
 
 var ErrClosed = errors.New("datastore closed")
@@ -78,25 +79,29 @@ func (d *Component) periodicGC() {
 // ======= functions =======
 
 func (d *Component) GetDb() (*bitcask.Bitcask, error) {
-	if iComponent.closed {
+	d.closeLk.RLock()
+	defer d.closeLk.RUnlock()
+	if d.closed { // Use d, not iComponent
 		return nil, ErrClosed
 	}
-
-	return iComponent.db, nil
+	return d.db, nil
 }
 
 // Close 关闭db
 func (d *Component) Close() error {
-	iComponent.closeOnce.Do(func() {
-		close(iComponent.closing)
-	})
-	iComponent.closeLk.Lock()
-	defer iComponent.closeLk.Unlock()
-	if iComponent.closed {
+	d.closeLk.Lock() // 加写锁
+	defer d.closeLk.Unlock()
+
+	if d.closed {
 		return ErrClosed
 	}
-	iComponent.closed = true
-	return iComponent.db.Close()
+
+	d.closeOnce.Do(func() {
+		close(d.closing)
+	})
+
+	d.closed = true
+	return d.db.Close()
 }
 
 func (c *Component) GenerateCacheKey(bucket string, key string) string {
@@ -116,12 +121,13 @@ func (d *Component) SetWithBucket(bucket string, key string, value string, ttl t
 	if d.closed {
 		return ErrClosed
 	}
-	return d.db.PutWithTTL([]byte(key), []byte(value), ttl)
+	// 修复：使用生成的组合键
+	realKey := d.GenerateCacheKey(bucket, key)
+	return d.db.PutWithTTL([]byte(realKey), []byte(value), ttl)
 }
 
 // Get 获取数据
 func (d *Component) Get(key string) (string, error) {
-
 	if d.closed {
 		return "", ErrClosed
 	}
@@ -142,7 +148,14 @@ func (d *Component) Delete(key string) error {
 }
 
 func (d *Component) GetMulti(keys []string) map[string]string {
+	d.closeLk.RLock()
+	defer d.closeLk.RUnlock()
+
 	result := make(map[string]string)
+	if d.closed {
+		return result
+	}
+
 	for _, key := range keys {
 		if value, err := d.db.Get([]byte(key)); err == nil {
 			result[key] = string(value)
