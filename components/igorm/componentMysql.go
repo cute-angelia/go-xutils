@@ -47,6 +47,30 @@ func (c *Component) MustInitMysql() *Component {
 	return c
 }
 
+func (c *Component) InitMysql() *Component {
+	// 配置必须信息
+	if len(c.config.Dsn) == 0 || len(c.config.DbName) == 0 {
+		panic(fmt.Sprintf("❌数据库配置不正确 dbName=%s dsn=%s", c.config.DbName, c.config.Dsn))
+	}
+	// 初始化 db
+	if _, ok := gormPool.Load(c.config.DbName); !ok {
+		db := c.initMysqlDb()
+		if db == nil {
+			log.Println(fmt.Sprintf("❌数据库 [%s] 初始化失败", c.config.DbName))
+		} else {
+			gormPool.Store(c.config.DbName, db)
+		}
+	}
+
+	// 初始化日志
+	log.Println(fmt.Sprintf("[%s] Name:%s 初始化",
+		PackageNameMysql,
+		c.config.DbName,
+	))
+
+	return c
+}
+
 func (c *Component) initMysqlDb() *gorm.DB {
 	var vlog *log.Logger
 	if c.config.LoggerWriter == nil {

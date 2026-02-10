@@ -52,6 +52,23 @@ func CheckIsEmptyDir(name string) bool {
 	return true
 }
 
+// GetValidEntries 返回有效的目录项。如果目录不存在或仅含垃圾文件，返回空切片。
+func GetValidEntries(name string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(name)
+	if err != nil {
+		return nil, err
+	}
+	validEntries := make([]os.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		// 过滤系统垃圾文件
+		n := entry.Name()
+		if n != ".DS_Store" && n != "Thumbs.db" {
+			validEntries = append(validEntries, entry)
+		}
+	}
+	return validEntries, nil
+}
+
 // IsFile 报告路径是否为文件
 func IsFile(path string) bool {
 	if fi, err := os.Stat(path); err == nil {
