@@ -135,61 +135,52 @@ func (e *Component) GenerateHashKey(bucketType int32, bucket string, prefix stri
 // 2.可以指定文件后缀获取
 // 建議在文件上傳到 MinIO 時，文件名數字部分補零（例如：第009話），這樣 MinIO 默認的字典序就會是正確的自然排序，你原本的流式分頁代碼就能直接運行。
 func (e *Component) GetObjectsByPage(bucket string, prefix string, page int32, perpage int32, fileExt []string) (objs []string, notall bool) {
-	// 控制流程
 	count := int32(0)
 	offset := (page - 1) * perpage
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// 严格按需索取：告诉 Minio 最多只返回到当前页为止的数据量
 	opt := minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
+		MaxKeys:   int(offset + perpage),
 	}
 	objectCh := e.Client.ListObjects(ctx, bucket, opt)
 
-	// 后缀扩展
-	extMap := sync.Map{}
+	// 局部 map 过滤
+	extMap := make(map[string]bool)
 	for _, str := range fileExt {
-		extMap.Store(str, true)
+		extMap[strings.ToLower(str)] = true
 	}
 
 	for object := range objectCh {
-		if object.Err == nil {
-			// 名称
-			objkeyname := path.Base(object.Key)
+		if object.Err != nil {
+			log.Println("object.Err", object.Err)
+			continue
+		}
 
-			// 内置删除文件
-			if objkeyname == ".DS_Store" {
-				e.Client.RemoveObject(context.Background(), bucket, object.Key, minio.RemoveObjectOptions{})
+		// 过滤逻辑
+		objkeyname := path.Base(object.Key)
+		if len(fileExt) > 0 {
+			ext := strings.ToLower(path.Ext(objkeyname))
+			if !extMap[ext] {
 				continue
 			}
-
-			// 处理指定后缀文件
-			if len(fileExt) > 0 {
-				if _, ok := extMap.Load(strings.ToLower(path.Ext(objkeyname))); !ok {
-					continue
-				}
-			}
-
-			// log.Printf("---->1 count:%d, offset:%d, perpage:%d, %v", count, offset, perpage, count >= offset)
-			// 小于当前游标
-			if count >= offset {
-				// 当前计数 - 游标
-				// log.Printf("<---- count:%d, offset:%d, perpage:%d, %v false:继续", count, offset, perpage, count-offset >= perpage)
-				if count-offset >= perpage {
-					notall = true
-					cancel()
-					break
-				}
-				objs = append(objs, bucket+"/"+object.Key)
-				count++
-			} else {
-				count++
-			}
-		} else {
-			log.Println("object.Err", object.Err)
 		}
+
+		// 分页逻辑
+		if count >= offset {
+			// 一旦满足当前页请求数量，立即 cancel 并退出
+			if int32(len(objs)) >= perpage {
+				notall = true
+				cancel()
+				break
+			}
+			objs = append(objs, bucket+"/"+object.Key)
+		}
+		count++
 	}
 	return objs, notall
 }
