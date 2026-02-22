@@ -75,14 +75,13 @@ func Clone(s string) string {
 
 // MaxLength 文本最大长度
 func MaxLength(txt string, size int) string {
-	//将字符串转为[]rune类型
+	// 1. 先转为 rune 处理多字节字符（如中文、日文、特殊符号）
 	txtRune := []rune(txt)
-	fLength := len(txtRune)
-	diff := fLength - size
 
-	if diff > 0 {
-		return string(txtRune[diff:fLength])
-	} else {
-		return txt
+	// 2. 如果字符长度超过限制，从索引 0 截取到 size
+	if len(txtRune) > size {
+		return string(txtRune[:size])
 	}
+
+	return txt
 }
