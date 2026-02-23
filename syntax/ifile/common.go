@@ -1,6 +1,7 @@
 package ifile
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -127,8 +128,26 @@ func DeleteFile(fpath string) error {
 	return nil
 }
 
-// Mv 移動檔案，具備跨裝置/分區的相容性
-func Mv(src, dst string) error {
+// RenamePath 直接重命名（支持文件和文件夹）
+func RenamePath(src, dst string) error {
+	// 1. 检查原路径是否存在
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("源路径不存在: %s", src)
+		}
+		return fmt.Errorf("检查源路径时出错: %v", err)
+	}
+	// 2. 直接重命名
+	// 注意：如果 src 和 dst 不在同一个分区，这里会报错 "invalid cross-device link"
+	err := os.Rename(src, dst)
+	if err != nil {
+		return fmt.Errorf("重命名失败: %v", err)
+	}
+	return nil
+}
+
+// MvCrossDevice 移動檔案，具備跨裝置/分區的相容性
+func MvCrossDevice(src, dst string) error {
 	// 1. 首先嘗試使用原生的 os.Rename (效能最高)
 	err := os.Rename(src, dst)
 	if err == nil {
