@@ -3,12 +3,13 @@ package igorm
 import (
 	"errors"
 	"fmt"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"log"
 	"os"
 	"time"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const PackageNameSQLite = "component.igorm.sqlite"
@@ -69,7 +70,8 @@ func (c *Component) initSqliteDb(pathdb string) *gorm.DB {
 	)
 
 	// 1. 尝试打开 (SQLite 实际上很少有网络超时，主要是 IO 错误)
-	db, err := gorm.Open(sqlite.Open(pathdb), &gorm.Config{
+	dsn := fmt.Sprintf("%s?_busy_timeout=5000", pathdb)
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: newLogger,
 	})
 
@@ -77,6 +79,10 @@ func (c *Component) initSqliteDb(pathdb string) *gorm.DB {
 		log.Printf("[%s] ❌数据库连接异常 Path:%s, Err:%v", PackageNameSQLite, pathdb, err)
 		return nil
 	}
+
+	// 【修改 2】开启 WAL 模式 (非常重要)
+	// 这一步必须在 Open 之后立即执行
+	db.Exec("PRAGMA journal_mode=WAL;")
 
 	// 2. 配置底层连接池
 	idb, err := db.DB()
@@ -89,7 +95,8 @@ func (c *Component) initSqliteDb(pathdb string) *gorm.DB {
 	if c.config.MaxOpenConns > 0 {
 		idb.SetMaxOpenConns(c.config.MaxOpenConns)
 	} else {
-		idb.SetMaxOpenConns(1)
+		// 写频繁建议设为 1，但在 WAL 模式下可以适当放宽到 2-5
+		idb.SetMaxOpenConns(3)
 	}
 
 	idb.SetMaxIdleConns(c.config.MaxIdleConns)
