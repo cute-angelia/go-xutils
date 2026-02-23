@@ -83,13 +83,28 @@ func Mkdir(dirPath string, perm os.FileMode) error {
 	return os.MkdirAll(dirPath, perm)
 }
 
-// OpenFile 修正：统一使用 filepath
-func OpenFile(fpath string, flag int, perm os.FileMode) (*os.File, error) {
-	fileDir := filepath.Dir(fpath)
-	if err := os.MkdirAll(fileDir, DefaultDirPerm); err != nil {
+// 1. 覆盖写模式 (Truncate/Overwrite)
+// 适用于日志重置、配置文件更新等。如果文件不存在则创建，如果存在则清空。
+// Flag: os.O_RDWR | os.O_CREATE | os.O_TRUNC
+// Perm: 0666 (文件), 0755 (目录)
+func CreateFile(fpath string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
 		return nil, err
 	}
-	return os.OpenFile(fpath, flag, perm)
+	return os.OpenFile(fpath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+}
+
+// 2. 追加写模式 (Append)
+func AppendFile(fpath string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(fpath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+}
+
+// 3. 只读模式 (Read Only)
+func OpenReadOnly(fpath string) (*os.File, error) {
+	return os.Open(fpath) // 内部封装了 os.OpenFile(name, O_RDONLY, 0)
 }
 
 // GetFileWithLocal 修正：使用 io.ReadAll 替代 ioutil

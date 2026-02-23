@@ -1,9 +1,10 @@
 package weworkrobot
 
 import (
-	"github.com/guonaihong/gout"
 	"log"
 	"time"
+
+	"github.com/guonaihong/gout"
 )
 
 type Component struct {
@@ -17,7 +18,6 @@ func newComponent(cfg *config) *Component {
 }
 
 func (c *Component) generateContent(content string) string {
-	// 2026 实践：使用结构体指针接收器 (c *Component) 减少拷贝开销
 	res := ""
 	if c.config.WithTime {
 		res += time.Now().Format("2006-01-02 15:04:05") + " "
@@ -50,6 +50,12 @@ func (c *Component) SendText(content string) error {
 
 func (c *Component) SendMarkDown(content string) error {
 	fullContent := c.generateContent(content)
+
+	// 如果有 topic，给它加个粗体样式
+	if len(c.config.Topic) > 0 {
+		// 这里的逻辑可以根据喜好调整，比如使用换行分隔
+		fullContent = "**" + c.config.Topic + "**\n" + content
+	}
 
 	// 2026 提醒：企业微信 Markdown 消息体里不支持 mentioned_list 字段
 	// 如果需要艾特，请在 content 中加入 <@userid> 或 <@all>
