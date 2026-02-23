@@ -2,7 +2,6 @@ package iimage
 
 import (
 	"fmt"
-	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"image"
 	"image/color"
 	"os"
@@ -45,7 +44,7 @@ func DecodePixelsFromImage(img image.Image, offsetX, offsetY int) []*Pixel {
 
 // LimitWidthHeightUseIsNot 限制图片大小
 func LimitWidthHeightUseIsNot(localFile string, width, height int) error {
-	if f, err := ifile.OpenFile(localFile, os.O_RDONLY, 0644); err != nil {
+	if f, err := os.OpenFile(localFile, os.O_RDONLY, 0644); err != nil {
 		return err
 	} else {
 		defer f.Close()
