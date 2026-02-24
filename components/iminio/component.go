@@ -6,12 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-xutils/components/idownload"
-	"github.com/cute-angelia/go-xutils/syntax/ifile"
-	"github.com/cute-angelia/go-xutils/utils/generator/hash"
-	progress "github.com/markity/minio-progress"
-	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 	"io"
 	"log"
 	"math/rand"
@@ -21,6 +15,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cute-angelia/go-xutils/components/idownload"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/utils/generator/hash"
+	progress "github.com/markity/minio-progress"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type Component struct {
@@ -389,25 +390,85 @@ func (e *Component) PutObjectWithSrc(dnComponent *idownload.Component, uri strin
 	}
 }
 
-// DeleteObject 删除文件
+// DeleteObject 删除文件， 注意：不会删除文件夹
 func (e *Component) DeleteObject(objectNameWithBucket string) error {
-	// 1. 先进行 URL Query 解码
-	decodedPath, err := url.QueryUnescape(objectNameWithBucket)
+
+	// 1. 建议使用 PathUnescape 更好地处理路径中的特殊字符
+	decodedPath, err := url.PathUnescape(objectNameWithBucket)
 	if err != nil {
-		log.Println("删除解码失败", err)
-		return err // 或者处理解码失败
-	}
-	opts := minio.RemoveObjectOptions{}
-	bucket, objectName := e.GetBucketAndObjectName(decodedPath)
-	if len(bucket) == 0 || len(objectName) == 0 {
-		return nil
-	}
-	err = e.Client.RemoveObject(context.Background(), bucket, objectName, opts)
-	if err != nil {
-		log.Println(PackageName, "删除对象失败：❌", fmt.Sprintf("Bucket:%s; Object:%s; 失败原因：", bucket, objectName), err)
+		log.Println(PackageName, "路径解码失败:", err)
 		return err
 	}
-	log.Println(PackageName, "删除对象成功：✅", fmt.Sprintf("Bucket:%s; Object:%s", bucket, objectName))
+
+	bucket, objectName := e.GetBucketAndObjectName(decodedPath)
+	if len(bucket) == 0 || len(objectName) == 0 {
+		log.Printf("%s 解析路径失败: bucket=%s, object=%s\n", PackageName, bucket, objectName)
+		return fmt.Errorf("invalid path: %s", objectNameWithBucket)
+	}
+
+	opts := minio.RemoveObjectOptions{}
+	err = e.Client.RemoveObject(context.Background(), bucket, objectName, opts)
+	if err != nil {
+		log.Printf("%s 删除对象失败：❌ Bucket:%s; Object:%s; 原因：%v\n", PackageName, bucket, objectName, err)
+		return err
+	}
+
+	log.Printf("原始输入: %q\n", objectNameWithBucket)
+	log.Printf("解码路径: %q\n", decodedPath)
+	log.Printf("解析对象名: %q\n", objectName)
+
+	log.Printf("%s 删除对象成功：✅ Bucket:%s; Object:%s\n", PackageName, bucket, objectName)
+	return nil
+}
+
+// DeleteFolder 递归删除目录下所有对象
+func (e *Component) DeleteFolder(objectNameWithBucket string) error {
+	// 1. 解码并获取 Bucket 和 Prefix
+	decodedPath, err := url.PathUnescape(objectNameWithBucket)
+	if err != nil {
+		log.Println(PackageName, "文件夹路径解码失败:", err)
+		return err
+	}
+
+	bucket, folderPrefix := e.GetBucketAndObjectName(decodedPath)
+	if len(bucket) == 0 || len(folderPrefix) == 0 {
+		return fmt.Errorf("invalid folder path: %s", objectNameWithBucket)
+	}
+
+	// 2. 核心：必须确保前缀以 "/" 结尾，否则会误删前缀相似的对象
+	// 例如：想删 "photos"，如果不加 /，会把 "photos_backup" 也删掉
+	if !strings.HasSuffix(folderPrefix, "/") {
+		folderPrefix += "/"
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 3. 获取该前缀下的所有对象通道
+	// ListObjects 会递归 (Recursive: true) 查找目录下所有子文件
+	objectsCh := e.Client.ListObjects(ctx, bucket, minio.ListObjectsOptions{
+		Prefix:    folderPrefix,
+		Recursive: true,
+	})
+
+	// 4. 调用 RemoveObjects 批量删除通道中的所有对象
+	// 这是比循环调用 RemoveObject 效率高得多的方式
+	errorCh := e.Client.RemoveObjects(ctx, bucket, objectsCh, minio.RemoveObjectsOptions{
+		GovernanceBypass: true,
+	})
+
+	// 5. 监听错误通道
+	hasError := false
+	for err := range errorCh {
+		log.Printf("%s 批量删除中发生错误: Object:%s, Error:%v\n", PackageName, err.ObjectName, err.Err)
+		hasError = true
+	}
+
+	if hasError {
+		return fmt.Errorf("partially failed to delete folder: %s", folderPrefix)
+	}
+
+	log.Printf("%s 目录及其内容已彻底删除：✅ Bucket:%s; Prefix:%s\n", PackageName, bucket, folderPrefix)
 	return nil
 }
 

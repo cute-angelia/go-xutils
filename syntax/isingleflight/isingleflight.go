@@ -1,8 +1,9 @@
 package isingleflight
 
 import (
-	"golang.org/x/sync/singleflight"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 var gsf singleflight.Group
@@ -14,15 +15,21 @@ func GenericWrapper[T any](key string, duration time.Duration, fn func() (T, err
 		if err != nil {
 			return nil, err
 		}
-		// 保持 Key 被佔用以達到 1 秒內僅執行一次
-		time.Sleep(duration)
+		// 注意：这会让第一个请求者变慢
+		if duration > 0 {
+			time.Sleep(duration)
+		}
 		return res, nil
 	})
 
+	var zero T
 	if err != nil {
-		var zero T // 定義 T 的零值
 		return zero, err
 	}
 
-	return val.(T), nil
+	// 安全断言
+	if typedVal, ok := val.(T); ok {
+		return typedVal, nil
+	}
+	return zero, nil
 }
