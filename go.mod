@@ -1,8 +1,6 @@
 module github.com/cute-angelia/go-xutils
 
-go 1.24.0
-
-toolchain go1.24.10
+go 1.26.0
 
 require (
 	git.mills.io/prologic/bitcask v1.0.2
@@ -10,6 +8,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.10+incompatible
 	github.com/anthonynsimon/bild v0.13.0
 	github.com/astaxie/beego v1.12.3
+	github.com/bytedance/sonic v1.15.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/faabiosr/cachego v0.17.0
 	github.com/fastwego/wxwork v1.0.0-beta.8
@@ -65,7 +64,6 @@ require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
 	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
@@ -140,7 +138,6 @@ require (
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gorm.io/plugin/dbresolver v1.6.2 // indirect
 )
 
 replace github.com/tidwall/gjson => github.com/tidwall/gjson v1.9.3
