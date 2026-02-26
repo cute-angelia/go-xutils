@@ -3,13 +3,14 @@ package ffmpeg
 import (
 	"errors"
 	"fmt"
-	"github.com/cute-angelia/go-xutils/syntax/icmd"
-	"github.com/cute-angelia/go-xutils/syntax/ifile"
-	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/cute-angelia/go-xutils/syntax/icmd"
+	"github.com/cute-angelia/go-xutils/syntax/ifile"
+	"github.com/cute-angelia/go-xutils/syntax/ijson"
 )
 
 const (
@@ -42,7 +43,7 @@ func (c *Component) generateText(ext []string) (tempText string, err error) {
 		// log.Println(c.getTempText())
 		log.Println(ijson.Pretty(files))
 
-		if itempText, err := ifile.OpenFile(text, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err != nil {
+		if itempText, err := ifile.CreateFile(text); err != nil {
 			return "", err
 		} else {
 			defer itempText.Close()
