@@ -42,7 +42,11 @@ func newComponent(config *config) *Component {
 	}
 
 	// db
-	if db, err := bitcask.Open(config.Path, bitcask.WithMaxDatafileSize(config.MaxDatafileSize)); err != nil {
+	if db, err := bitcask.Open(config.Path,
+		bitcask.WithMaxDatafileSize(config.MaxDatafileSize),
+		bitcask.WithMaxKeySize(config.MaxKeySize),
+		bitcask.WithMaxValueSize(config.MaxValueSize),
+	); err != nil {
 		panic(fmt.Sprintf("[%s] 初始化失败: %s", PackageName, err))
 	} else {
 		comp.db = db

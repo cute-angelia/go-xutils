@@ -1,9 +1,10 @@
 package ibitcask
 
 import (
+	"log"
+
 	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/spf13/viper"
-	"log"
 )
 
 type Option func(c *Container)
@@ -38,6 +39,16 @@ func New(options ...Option) *Component {
 func WithMaxSize(maxsize int) Option {
 	return func(c *Container) {
 		c.config.MaxDatafileSize = maxsize
+	}
+}
+func WithMaxKeySize(maxsize uint32) Option {
+	return func(c *Container) {
+		c.config.MaxKeySize = maxsize
+	}
+}
+func WithMaxValueSize(maxsize uint64) Option {
+	return func(c *Container) {
+		c.config.MaxValueSize = maxsize
 	}
 }
 
