@@ -1,23 +1,17 @@
 package isingleflight
 
 import (
-	"time"
-
 	"golang.org/x/sync/singleflight"
 )
 
 var gsf singleflight.Group
 
 // GenericWrapper 使用泛型 T 封裝 singleflight
-func GenericWrapper[T any](key string, duration time.Duration, fn func() (T, error)) (T, error) {
+func GenericWrapper[T any](key string, fn func() (T, error)) (T, error) {
 	val, err, _ := gsf.Do(key, func() (interface{}, error) {
 		res, err := fn()
 		if err != nil {
 			return nil, err
-		}
-		// 注意：这会让第一个请求者变慢
-		if duration > 0 {
-			time.Sleep(duration)
 		}
 		return res, nil
 	})

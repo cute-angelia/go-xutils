@@ -140,7 +140,7 @@ func (that *api) Validation(v interface{}, fields ...*validation.FieldRules) err
 func (that *api) ValidMustLogin() bool {
 	uid := that.GetUid()
 	if uid <= 0 {
-		that.ErrorCodeMsg(-401, "請先登入")
+		that.ErrorCodeMsg(-401, "请先登入")
 		return false
 	}
 	return true

@@ -26,6 +26,7 @@ func DefaultConfig() *config {
 		MaxSize:    100,
 		MaxBackups: 10,
 		MaxAge:     10,
+		HookError:  true, // 默认开启错误分类
 		Everyday:   true,
 		LogPath:    ".",
 		Level:      zerolog.DebugLevel,

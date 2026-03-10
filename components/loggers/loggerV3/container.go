@@ -1,11 +1,12 @@
 package loggerV3
 
 import (
+	"log"
+
 	"github.com/cute-angelia/go-xutils/syntax/ifile"
 	"github.com/cute-angelia/go-xutils/syntax/ijson"
 	"github.com/rs/zerolog"
 	"github.com/spf13/viper"
-	"log"
 )
 
 type Option func(c *Container)
@@ -26,7 +27,7 @@ func Load(key string) *Component {
 		log.Println(err)
 	}
 	// log.Println(ijson.Pretty(iconfig))
-	return newComponent(iconfig)
+	return NewComponent(iconfig)
 }
 
 // New options 模式
@@ -38,7 +39,7 @@ func New(options ...Option) *Component {
 		option(c)
 	}
 
-	return newComponent(c.config)
+	return NewComponent(c.config)
 }
 
 func WithProject(project string) Option {

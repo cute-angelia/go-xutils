@@ -1,179 +1,199 @@
 package loggerV3
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"github.com/rs/zerolog"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"io"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-var component *Component
-
-var logOnce sync.Once
-var loggerError *zerolog.Logger
+var (
+	component   *Component
+	mu          sync.RWMutex
+	loggerError *zerolog.Logger
+)
 
 type Component struct {
 	config *config
 	logger *zerolog.Logger
+	cancel context.CancelFunc // 用于停止每日轮转协程
+	once   sync.Once          // 每个实例独立的初始化锁
 }
 
-// GetLogger 开放方法
+// GetLogger 获取单例
 func GetLogger() *zerolog.Logger {
-	if component == nil || component.logger == nil {
-		log.Println("日志未初始化，启动默认输出保存为文件log_default.log")
-		component = newComponent(DefaultConfig())
+	mu.RLock()
+	if component != nil && component.logger != nil {
+		defer mu.RUnlock()
+		return component.logger
 	}
+	mu.RUnlock()
 
+	mu.Lock()
+	defer mu.Unlock()
+	// 双重检查
+	if component == nil {
+		fmt.Println("日志未初始化，启动默认配置")
+		component = NewComponent(DefaultConfig())
+	}
 	return component.logger
 }
 
-func newComponent(config *config) *Component {
-	cpt := &Component{}
-	cpt.config = config
-	cpt.logger = cpt.newLogger(config)
+// NewComponent 创建新组件（支持外部显式初始化）
+func NewComponent(config *config) *Component {
+	ctx, cancel := context.WithCancel(context.Background())
+	cpt := &Component{
+		config: config,
+		cancel: cancel,
+	}
 
+	// 重点：先加锁赋值，让 GetLogger() 能拿到实例，不再触发“默认初始化”
+	mu.Lock()
 	component = cpt
-	return component
+	mu.Unlock()
+
+	// 然后再初始化内部的 zerolog 实例
+	cpt.initLogger(ctx)
+
+	return cpt
 }
 
-func (self *Component) newLogger(config *config) *zerolog.Logger {
-	logOnce.Do(func() {
-		ilog := self.makeMainLogger("/log_" + config.Project + ".log")
-		// hook error
-		if config.HookError {
+// Stop 停止相关资源（如轮转协程）
+func (self *Component) Stop() {
+	if self.cancel != nil {
+		self.cancel()
+	}
+}
+
+// Stop 停止日志组件相关的后台协程（如每日切割协程）
+func Stop() {
+	mu.Lock()
+	defer mu.Unlock()
+	if component != nil {
+		component.Stop() // 调用之前定义的 Component.Stop()
+		fmt.Println("日志组件已安全关闭")
+	}
+}
+
+func (self *Component) initLogger(ctx context.Context) {
+	self.once.Do(func() {
+		// 1. 初始化主 Logger
+		mainLogName := "log_" + self.config.Project + ".log"
+		ilog := self.makeLogger(ctx, mainLogName, false)
+
+		// 2. 挂载 Error Hook
+		if self.config.HookError {
 			ilog = ilog.Hook(ErrorHook{})
-			loge := self.makeErrorLogger("/error/log_error_" + config.Project + ".log")
-			loggerError = &loge
+			errLogName := filepath.Join("error", "log_error_"+self.config.Project+".log")
+			errLogger := self.makeLogger(ctx, errLogName, true)
+			loggerError = &errLogger
 		}
+
+		// 3. 配置全局 Zerolog 属性
+		zerolog.TimeFieldFormat = "2006-01-02 15:04:05.000"
+		zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
+			return filepath.Base(file) + ":" + strconv.Itoa(line)
+		}
+		zerolog.SetGlobalLevel(self.config.Level)
+
 		self.logger = &ilog
 	})
-	return self.logger
 }
 
-// makeMainLoger 主 logger
-func (self *Component) makeMainLogger(logName string) zerolog.Logger {
-	var writers []io.Writer
-	// 原生日志支持
-	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmsgprefix | log.Lmicroseconds)
-	log.Println(fmt.Sprintf("[%s] 初始化，项目:%s 路径：%s 线上模式:%v FileJson:%v", ComponentName, self.config.Project, self.config.LogPath, self.config.IsOnline, self.config.FileJson))
+/*
+// 重点：使用 CallerWithSkipFrameCount(3)
+// 3 层深度：
+// [0] zerolog 内部
+// [1] zerolog 封装
+// [2] loggerV3 内部 (GetLogger)
+// [3] 你的业务代码 (main.go)
+*/
+func (self *Component) makeLogger(ctx context.Context, logName string, isErrorStream bool) zerolog.Logger {
+	var writer io.Writer
+
+	// 1. 确定基础输出流
 	if self.config.IsOnline {
-		var w io.Writer
-		// 线上 json 模式
+		rolling := self.newRollingFile(ctx, logName)
 		if self.config.FileJson {
-			w = self.newRollingFile(logName)
-			log.SetOutput(w)
+			writer = rolling
 		} else {
-			// 线上输出模式
-			w = self.newRollingFile(logName)
-			log.SetOutput(w)
-			w = self.formatLogger(w)
+			writer = self.formatLogger(rolling)
 		}
-		writers = append(writers, w)
 	} else {
-		// 开发模式自定义日志格式
-		output := self.formatLogger(os.Stdout)
-		// 关闭 caller
-		// log.Println("callerWithSkipFrameCount:", callerWithSkipFrameCount, callerWithSkipFrameCount == -1)
-		log.SetOutput(zerolog.New(output).With().Timestamp().CallerWithSkipFrameCount(4).Logger())
-
-		writers = append(writers, output)
+		writer = self.formatLogger(os.Stdout)
 	}
-	mw := zerolog.MultiLevelWriter(writers...)
 
-	// 配置
-	zerolog.SetGlobalLevel(self.config.Level)
-	zerolog.TimeFieldFormat = "2006-01-02 15:04:05.000"
-	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
-		var buffer bytes.Buffer
-		buffer.WriteString(path.Base(file))
-		buffer.WriteString(":")
-		buffer.WriteString(strconv.Itoa(line))
-		return buffer.String()
-	}
-	ilog := zerolog.New(mw).With().Timestamp().Caller().Logger()
-	return ilog
-}
+	// 2. 配置原生 log 包 (标准库)
+	// 让 log.Println 也能输出到相同文件，并带上行号
+	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
 
-// makeErrorLogger 需求，error 级别单独文件存储
-func (self *Component) makeErrorLogger(logName string) zerolog.Logger {
-	var writers []io.Writer
-	if self.config.IsOnline {
-		var w io.Writer
-		// 线上 json 模式
-		if self.config.FileJson {
-			w = self.newRollingFile(logName)
-		} else {
-			// 线上输出模式
-			w = self.newRollingFile(logName)
-			w = self.formatLogger(w)
-		}
-		writers = append(writers, w)
-	} else {
-		// 开发模式自定义日志格式
-		output := self.formatLogger(os.Stdout)
-		// 关闭 caller
-		log.SetOutput(zerolog.New(output).With().Timestamp().Logger())
-		writers = append(writers, output)
-	}
-	mw := zerolog.MultiLevelWriter(writers...)
+	// 重点：为了让原生 log 输出格式与 zerolog 一致且行号正确
+	// 我们创建一个 skip 为 4 的 zerolog 实例专门给标准库用
+	stdLogWriter := zerolog.New(writer).With().Timestamp().CallerWithSkipFrameCount(4).Logger()
+	log.SetOutput(stdLogWriter)
 
-	// 配置
-	zerolog.SetGlobalLevel(self.config.Level)
-	zerolog.TimeFieldFormat = "2006-01-02 15:04:05.000"
-	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
-		var buffer bytes.Buffer
-		buffer.WriteString(path.Base(file))
-		buffer.WriteString(":")
-		buffer.WriteString(strconv.Itoa(line))
-		return buffer.String()
-	}
-	ilog := zerolog.New(mw).With().Timestamp().Logger()
-	return ilog
+	// 3. 配置 zerolog 实例 (业务使用)
+	// 深度设为 3 是因为业务通过 GetLogger().Info() 调用
+	l := zerolog.New(writer).With().Timestamp().CallerWithSkipFrameCount(3)
+
+	return l.Logger()
 }
 
 func (self *Component) formatLogger(out io.Writer) io.Writer {
-	// 开发模式自定义日志格式
 	output := zerolog.ConsoleWriter{Out: out, TimeFormat: "2006-01-02 15:04:05.000"}
 	output.FormatLevel = func(i interface{}) string {
+		var l string
 		if i == nil {
-			i = "info"
+			l = "INFO" // 默认级别
+		} else {
+			l = strings.ToUpper(fmt.Sprintf("%s", i))
 		}
-		return strings.ToUpper(fmt.Sprintf("| %-6s|", i))
+		return fmt.Sprintf("| %-6s|", l)
 	}
 	return output
 }
 
-func (self *Component) newRollingFile(logName string) io.Writer {
-	ljLogger := lumberjack.Logger{
-		Filename:   self.config.LogPath + "/" + logName,
-		MaxBackups: self.config.MaxBackups, // files
-		MaxSize:    self.config.MaxSize,    // megabytes
-		MaxAge:     self.config.MaxAge,     // days
+func (self *Component) newRollingFile(ctx context.Context, logName string) io.Writer {
+	fullPath := filepath.Join(self.config.LogPath, logName)
+
+	// 确保目录存在
+	dir := filepath.Dir(fullPath)
+	_ = os.MkdirAll(dir, 0755)
+
+	ljLogger := &lumberjack.Logger{
+		Filename:   fullPath,
+		MaxBackups: self.config.MaxBackups,
+		MaxSize:    self.config.MaxSize,
+		MaxAge:     self.config.MaxAge,
+		LocalTime:  true,
 	}
 
-	// 每日分割
 	if self.config.Everyday {
 		go func() {
 			for {
 				now := time.Now()
-				// 计算下一个零点
-				next := now.Add(time.Hour * 24)
-				next = time.Date(next.Year(), next.Month(), next.Day(), 0, 0, 0, 0, next.Location())
-				t := time.NewTimer(next.Sub(now))
-				<-t.C
-				ljLogger.Rotate()
-				t.Stop()
+				next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+				timer := time.NewTimer(next.Sub(now))
+
+				select {
+				case <-timer.C:
+					_ = ljLogger.Rotate()
+				case <-ctx.Done():
+					timer.Stop()
+					return // 安全退出协程
+				}
 			}
 		}()
 	}
 
-	return &ljLogger
+	return ljLogger
 }

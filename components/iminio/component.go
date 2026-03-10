@@ -392,7 +392,6 @@ func (e *Component) PutObjectWithSrc(dnComponent *idownload.Component, uri strin
 
 // DeleteObject 删除文件， 注意：不会删除文件夹
 func (e *Component) DeleteObject(objectNameWithBucket string) error {
-
 	// 1. 建议使用 PathUnescape 更好地处理路径中的特殊字符
 	decodedPath, err := url.PathUnescape(objectNameWithBucket)
 	if err != nil {
@@ -417,7 +416,7 @@ func (e *Component) DeleteObject(objectNameWithBucket string) error {
 	log.Printf("解码路径: %q\n", decodedPath)
 	log.Printf("解析对象名: %q\n", objectName)
 
-	log.Printf("%s 删除对象成功：✅ Bucket:%s; Object:%s\n", PackageName, bucket, objectName)
+	fmt.Printf("%s 删除对象成功：✅ Bucket:%s; Object:%s\n", PackageName, bucket, objectName)
 	return nil
 }
 
