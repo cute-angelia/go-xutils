@@ -42,7 +42,7 @@ func GetLogger() *zerolog.Logger {
 	defer mu.Unlock()
 	// 双重检查
 	if component == nil {
-		fmt.Println("日志未初始化，启动默认配置")
+		fmt.Println("日志未初始化，启动默认配置x")
 		component = NewComponent(DefaultConfig())
 	}
 	return component.logger
@@ -64,6 +64,8 @@ func NewComponent(config *config) *Component {
 	// 然后再初始化内部的 zerolog 实例
 	cpt.initLogger(ctx)
 
+	log.Println(ComponentName + "日志启动成功")
+
 	return cpt
 }
 
@@ -80,7 +82,6 @@ func Stop() {
 	defer mu.Unlock()
 	if component != nil {
 		component.Stop() // 调用之前定义的 Component.Stop()
-		fmt.Println("日志组件已安全关闭")
 	}
 }
 
@@ -120,7 +121,7 @@ func (self *Component) initLogger(ctx context.Context) {
 func (self *Component) makeLogger(ctx context.Context, logName string, isErrorStream bool) zerolog.Logger {
 	var writer io.Writer
 
-	// 1. 确定基础输出流
+	// 1. 确定输出流
 	if self.config.IsOnline {
 		rolling := self.newRollingFile(ctx, logName)
 		if self.config.FileJson {
@@ -133,19 +134,25 @@ func (self *Component) makeLogger(ctx context.Context, logName string, isErrorSt
 	}
 
 	// 2. 配置原生 log 包 (标准库)
-	// 让 log.Println 也能输出到相同文件，并带上行号
-	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
+	// 关闭原生 log 的所有自带属性，因为 zerolog 会提供这些
+	log.SetFlags(0)
 
-	// 重点：为了让原生 log 输出格式与 zerolog 一致且行号正确
-	// 我们创建一个 skip 为 4 的 zerolog 实例专门给标准库用
+	// 为原生 log 创建一个专用的 writer，Skip 设为 4
+	// 这样 log.Println("xxx") 就会显示业务代码行号
 	stdLogWriter := zerolog.New(writer).With().Timestamp().CallerWithSkipFrameCount(4).Logger()
 	log.SetOutput(stdLogWriter)
 
-	// 3. 配置 zerolog 实例 (业务使用)
-	// 深度设为 3 是因为业务通过 GetLogger().Info() 调用
-	l := zerolog.New(writer).With().Timestamp().CallerWithSkipFrameCount(3)
+	// 3. 业务使用的 Logger，Skip 设为 2
+	// 链路：业务代码 -> GetLogger() -> zerolog.Info()
+	l := zerolog.New(writer).With().Timestamp().CallerWithSkipFrameCount(2).Logger()
 
-	return l.Logger()
+	// 4. 【关键】初始化成功提示不要用被劫持的 log.Println
+	// 直接用 fmt 输出到控制台，或者用刚生成的 l 输出一次
+	if !isErrorStream {
+		fmt.Printf("[%s] 初始化成功: 项目=%s, 路径=%s\n", ComponentName, self.config.Project, self.config.LogPath)
+	}
+
+	return l
 }
 
 func (self *Component) formatLogger(out io.Writer) io.Writer {
