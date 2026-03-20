@@ -93,7 +93,7 @@ func (f fileName) GetNameTimelineReverse(withDate bool) string {
 
 	respName := ""
 	if withDate {
-		respName = fmt.Sprintf("%d_%s", diffTime, time.Now().Format("20060102150405"))
+		respName = fmt.Sprintf("%020d_%s", diffTime, time.Now().Format("20060102150405"))
 	}
 
 	return fmt.Sprintf("%s%s%s%s", f.prefix, respName, f.suffix, ext)

@@ -50,13 +50,13 @@ type Ext struct {
 // Pagination 分页结构体
 type Pagination struct {
 	//  当前页
-	PageNo int64 `json:"pageNo"`
+	Page int64 `json:"page"`
 	// PageSize 每页记录数
-	PageSize int64 `json:"pageSize"`
+	PageSize int64 `json:"page_size"`
 	// PageTotal 总页数
-	PageTotal int64 `json:"pageTotal"`
+	PageTotal int64 `json:"page_total"`
 	// 总条数
-	Count int64 `json:"count"`
+	Total int64 `json:"total"`
 }
 
 // CalcTotal 计算总页数
@@ -67,8 +67,8 @@ func (p Pagination) CalcTotal(count, pageSize int64) int64 {
 	return (count + pageSize - 1) / pageSize
 }
 
-func NewPagination(count, pageNo, pageSize int64) Pagination {
-	paginationor := Pagination{PageNo: pageNo, PageSize: pageSize, Count: count}
+func NewPagination(count, Page, pageSize int64) Pagination {
+	paginationor := Pagination{Page: Page, PageSize: pageSize, Total: count}
 	paginationor.PageTotal = paginationor.CalcTotal(count, pageSize)
 	return paginationor
 }
