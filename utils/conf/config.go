@@ -3,11 +3,13 @@ package conf
 import (
 	"bytes"
 	"fmt"
-	"github.com/spf13/viper"
 	"io"
 	"log"
+	"os"
 	"path/filepath" // 彻底移除 path 包
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 // LoadConfigFile 集成环境变量自动绑定
@@ -57,14 +59,19 @@ func MergeConfig(byteCfg io.Reader) error {
 
 // MergeConfigWithPath 修正版：正确提取目录和文件名
 func MergeConfigWithPath(cfgPath string) error {
-	dir := filepath.Dir(cfgPath)
-	// 去除后缀，Viper MergeInConfig 需要纯文件名
-	filename := strings.TrimSuffix(filepath.Base(cfgPath), filepath.Ext(cfgPath))
+	ext := filepath.Ext(cfgPath)
+	fileType := strings.TrimPrefix(ext, ".")
 
-	viper.AddConfigPath(dir)
-	viper.SetConfigName(filename)
+	f, err := os.Open(cfgPath)
+	if err != nil {
+		return fmt.Errorf("open config file failed: %w", err)
+	}
+	defer f.Close()
 
-	if err := viper.MergeInConfig(); err != nil {
+	// 直接用 MergeConfig(io.Reader) + 显式 SetConfigType
+	// 避免 viper 文件发现逻辑干扰解析器选择
+	viper.SetConfigType(fileType)
+	if err := viper.MergeConfig(f); err != nil {
 		return fmt.Errorf("merge config failed: %w", err)
 	}
 	return nil

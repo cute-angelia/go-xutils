@@ -282,7 +282,7 @@ func (e *Component) FPutObject(bucket string, objectNameIn string, filePath stri
 		ctx := context.TODO()
 		uploadInfo, err := e.Client.PutObject(ctx, bucket, objectName, file, tempFileSize, objopt)
 		if err != nil {
-			log.Println(err)
+			log.Println("上传失败：FPutObject：", err)
 			return uploadInfo, err
 		}
 		if e.config.Debug {

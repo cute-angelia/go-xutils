@@ -3,14 +3,15 @@ package apiV3
 import (
 	"encoding/json"
 	"errors"
-	"github.com/cute-angelia/go-xutils/syntax/irandom"
-	"github.com/cute-angelia/go-xutils/utils/iAes"
-	"github.com/cute-angelia/go-xutils/utils/iXor"
-	"github.com/go-ozzo/ozzo-validation/v4"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/cute-angelia/go-xutils/syntax/irandom"
+	"github.com/cute-angelia/go-xutils/utils/iAes"
+	"github.com/cute-angelia/go-xutils/utils/iXor"
+	"github.com/go-ozzo/ozzo-validation/v4"
 )
 
 type api struct {
@@ -281,7 +282,7 @@ func (that *api) logr(tag string) {
 	if that.isLogOn {
 		log.Printf("响应: %s", dataResp)
 	} else {
-		log.Printf("响应: %s", "關閉列印")
+		log.Printf("响应: %s", "关闭打印")
 	}
 	log.Println("------------------------------------------------------------------------------")
 }
