@@ -320,74 +320,42 @@ func (e *Component) PutObjectBase64(bucket string, objectNameIn string, base64Fi
 // PutObjectWithSrc 提供链接，上传到 minio
 // return key & hash sha1 & error
 func (e *Component) PutObjectWithSrc(dnComponent *idownload.Component, uri string, bucket string, objectName string, objopt minio.PutObjectOptions) (string, error) {
-	// http 不处理
 	if !strings.Contains(uri, "http") {
 		return uri, errors.New("非链接地址:" + uri)
 	}
 
-	objectName = strings.Replace(objectName, "//", "/", -1)
+	objectName = strings.ReplaceAll(objectName, "//", "/")
 
-	// 得判断文件大小，过大文件下载后上传
-	// limitMax, _ := humanize.ParseBytes("43 MB")
-	// fileSize := uint64(dnComponent.GetContentLength(uri))
-	// log.Println(fileSize > limitMax || fileSize == 0, " xx")
-
-	if true {
-		tempname := ifile.NewFileName(uri).GetNameSnowFlow()
-		if _, err := dnComponent.Download(uri, tempname); err == nil {
-			defer os.Remove(tempname)
-			// 打开文件
-			file, err := os.OpenFile(tempname, os.O_RDONLY, 0444)
-			defer file.Close()
-			if err != nil {
-				log.Fatalf("打开文件失败:%v\n", err)
-			}
-			// 获取文件大小
-			fileInfo, err := file.Stat()
-			if err != nil {
-				log.Fatalf("获取文件信息失败:%v\n", err)
-			}
-			tempFileSize := fileInfo.Size()
-
-			// 创建上传进度条对象
-			objopt.Progress = progress.NewUploadProgress(tempFileSize)
-
-			ctx := context.TODO()
-			if info, err := e.Client.PutObject(ctx, bucket, objectName, file, tempFileSize, objopt); err == nil {
-				log.Println(PackageName, "上传成功：✅", uri, bucket+"/"+info.Key)
-				return bucket + "/" + info.Key, nil
-			} else {
-				log.Println(PackageName, "上传失败：❌", err, bucket, objectName, uri)
-				return "", fmt.Errorf("上传失败：❌ %v, %s %s %s", err, bucket, objectName, uri)
-			}
-		} else {
-			if e.config.Debug {
-				log.Println(PackageName, "获取图片失败：❌", uri, err)
-			}
-			return "", errors.New("获取图片失败：❌" + uri + "  " + err.Error())
+	tempname := ifile.NewFileName(uri).GetNameSnowFlow()
+	if _, err := dnComponent.Download(uri, tempname); err != nil {
+		if e.config.Debug {
+			log.Println(PackageName, "获取文件失败：❌", uri, err)
 		}
-	} else {
-		if filebyte, err := dnComponent.DownloadToByte(uri); err != nil {
-			if e.config.Debug {
-				log.Println(PackageName, "DownloadToByte 失败：❌", uri, err)
-			}
-			return "", errors.New("DownloadToByte 失败：❌" + uri + "  " + err.Error())
-		} else {
-			// 打印日志
-			if e.config.Debug {
-				log.Printf("获取地址: %s, 代理：%s", uri, e.config.ProxySocks5)
-			}
-			if info, err := e.Client.PutObject(context.TODO(), bucket, objectName, bytes.NewReader(filebyte), int64(len(filebyte)), objopt); err != nil {
-				if e.config.Debug {
-					log.Println(PackageName, "上传失败：❌", err, bucket, objectName, uri)
-				}
-				return "", fmt.Errorf("上传失败：❌ %v, %s %s %s", err, bucket, objectName, uri)
-			} else {
-				log.Println(PackageName, "上传成功：✅", uri, bucket+"/"+info.Key)
-				return bucket + "/" + info.Key, nil
-			}
-		}
+		return "", fmt.Errorf("获取文件失败：❌ %s  %w", uri, err)
 	}
+	defer os.Remove(tempname) // 下载成功后，函数退出时清理
+
+	file, err := os.OpenFile(tempname, os.O_RDONLY, 0444)
+	if err != nil {
+		return "", fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("获取文件信息失败: %w", err)
+	}
+
+	objopt.Progress = progress.NewUploadProgress(fileInfo.Size())
+
+	info, err := e.Client.PutObject(context.TODO(), bucket, objectName, file, fileInfo.Size(), objopt)
+	if err != nil {
+		log.Println(PackageName, "上传失败：❌", err, bucket, objectName, uri)
+		return "", fmt.Errorf("上传失败：❌ %w, %s %s %s", err, bucket, objectName, uri)
+	}
+
+	log.Println(PackageName, "上传成功：✅", uri, bucket+"/"+info.Key)
+	return bucket + "/" + info.Key, nil
 }
 
 // DeleteObject 删除文件， 注意：不会删除文件夹
