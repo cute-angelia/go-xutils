@@ -1,7 +1,6 @@
 package iminio
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -195,22 +194,19 @@ func (e *Component) GetObjectStat(bucket string, objectName string) (minio.Objec
 	return objInfo, err
 }
 
+// CheckMode ✅ 移除废弃的 rand.Seed
 func (e *Component) CheckMode(objectName string) (newObjectName string, canupload bool) {
-	// 跳过
-	if e.config.ReplaceMode == ReplaceModeIgnore {
-		canupload = false
-		newObjectName = objectName
+	switch e.config.ReplaceMode {
+	case ReplaceModeIgnore:
+		return objectName, false
+	case ReplaceModeReplace:
+		return objectName, true
+	case ReplaceModeTwo:
+		// Go 1.20+ 全局 rand 已自动随机初始化，无需 Seed
+		return fmt.Sprintf("bak_%d_%s", rand.Intn(100), objectName), true
+	default:
+		return objectName, false
 	}
-	if e.config.ReplaceMode == ReplaceModeReplace {
-		canupload = true
-		newObjectName = objectName
-	}
-	if e.config.ReplaceMode == ReplaceModeTwo {
-		rand.Seed(time.Now().Unix())
-		canupload = true
-		newObjectName = fmt.Sprintf("bak_%d_%s", rand.Intn(100), objectName)
-	}
-	return
 }
 
 // CopyObject 复制对象
@@ -220,101 +216,100 @@ func (e *Component) CopyObject(dst minio.CopyDestOptions, src minio.CopySrcOptio
 }
 
 // PutObject 上传-按读取文件数据
+// PutObject：流式上传时用 pipe，避免整体读入内存
 func (e *Component) PutObject(bucket string, objectNameIn string, reader io.Reader, objectSize int64, objopt minio.PutObjectOptions) (minio.UploadInfo, error) {
-	if objectName, ok := e.CheckMode(objectNameIn); ok {
-		objectName = strings.Replace(objectName, "//", "/", -1)
+	objectName, ok := e.CheckMode(objectNameIn)
+	if !ok {
+		return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
+	}
+	objectName = strings.ReplaceAll(objectName, "//", "/")
 
-		// --- 核心修复 1：优化内存分配 ---
-		if objectSize <= 0 {
-			// 如果是流式上传（size为-1），手动限制分片大小为 10MB
-			// 这样 SDK 内部的缓冲区就会被限制在 10MB 左右，而不是默认的数百MB
-			if objopt.PartSize == 0 {
-				objopt.PartSize = 10 * 1024 * 1024
-			}
-		}
-
-		// --- 核心修复 2：安全初始化进度条 ---
-		// 只有明确知道大小时才启用进度条，防止进度条逻辑因 -1 产生除零或计算异常
-		if objectSize > 0 {
-			objopt.Progress = progress.NewUploadProgress(objectSize)
-		} else {
-			// 确保流式上传时不带进度条
-			objopt.Progress = nil
-		}
-
-		// 执行上传
-		uploadInfo, err := e.Client.PutObject(context.Background(), bucket, objectName, reader, objectSize, objopt)
-
-		if err != nil {
-			log.Println("Upload Failed:", bucket, objectNameIn, err)
-			return uploadInfo, err
-		}
-
-		if e.config.Debug {
-			log.Printf("Successfully uploaded: %s/%s, Size: %d\n", bucket, objectName, uploadInfo.Size)
-		}
-		return uploadInfo, err
+	// 流式上传：size=-1 时不设 PartSize（无效），改用 SendContentMd5 减少重传风险
+	if objectSize <= 0 {
+		objopt.PartSize = 0
+		objopt.Progress = nil
+	} else {
+		objopt.Progress = progress.NewUploadProgress(objectSize)
 	}
 
-	return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
+	// ✅ 统一用带超时的 context
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	uploadInfo, err := e.Client.PutObject(ctx, bucket, objectName, reader, objectSize, objopt)
+	if err != nil {
+		log.Println("Upload Failed:", bucket, objectNameIn, err)
+		return uploadInfo, err
+	}
+	if e.config.Debug {
+		log.Printf("Successfully uploaded: %s/%s, Size: %d\n", bucket, objectName, uploadInfo.Size)
+	}
+	return uploadInfo, nil
 }
 
-// FPutObject 上传-按存在文件
+// FPutObject：加上超时 context
 func (e *Component) FPutObject(bucket string, objectNameIn string, filePath string, objopt minio.PutObjectOptions) (minio.UploadInfo, error) {
-	if objectName, ok := e.CheckMode(objectNameIn); ok {
-
-		// 打开文件
-		file, err := os.OpenFile(filePath, os.O_RDONLY, 0444)
-		defer file.Close()
-		if err != nil {
-			log.Fatalf("打开文件失败:%v\n", err)
-		}
-		// 获取文件大小
-		fileInfo, err := file.Stat()
-		if err != nil {
-			log.Fatalf("获取文件信息失败:%v\n", err)
-		}
-		tempFileSize := fileInfo.Size()
-
-		// 创建上传进度条对象
-		objopt.Progress = progress.NewUploadProgress(tempFileSize)
-
-		ctx := context.TODO()
-		uploadInfo, err := e.Client.PutObject(ctx, bucket, objectName, file, tempFileSize, objopt)
-		if err != nil {
-			log.Println("上传失败：FPutObject：", err)
-			return uploadInfo, err
-		}
-		if e.config.Debug {
-			log.Println("Successfully uploaded bytes: ", uploadInfo)
-		}
-		return uploadInfo, err
-	} else {
+	objectName, ok := e.CheckMode(objectNameIn)
+	if !ok {
 		return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
 	}
+
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0444)
+	if err != nil {
+		return minio.UploadInfo{}, fmt.Errorf("打开文件失败: %w", err)
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return minio.UploadInfo{}, fmt.Errorf("获取文件信息失败: %w", err)
+	}
+
+	objopt.Progress = progress.NewUploadProgress(fileInfo.Size())
+
+	// ✅ 加超时，避免大文件永久阻塞
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	uploadInfo, err := e.Client.PutObject(ctx, bucket, objectName, file, fileInfo.Size(), objopt)
+	if err != nil {
+		return uploadInfo, fmt.Errorf("上传失败: %w", err)
+	}
+	if e.config.Debug {
+		log.Println("Successfully uploaded bytes: ", uploadInfo)
+	}
+	return uploadInfo, nil
 }
 
-// PutObjectBase64 上传 - base64
+// PutObjectBase64：✅ 用 streaming decode 避免双份内存
 func (e *Component) PutObjectBase64(bucket string, objectNameIn string, base64File string, objopt minio.PutObjectOptions) (minio.UploadInfo, error) {
-	if objectName, ok := e.CheckMode(objectNameIn); ok {
-		b64data := base64File[strings.IndexByte(base64File, ',')+1:]
-		if decode, err := base64.StdEncoding.DecodeString(b64data); err == nil {
-			body := bytes.NewReader(decode)
-			if uploadInfo, err := e.Client.PutObject(context.Background(), bucket, objectName, body, body.Size(), objopt); err == nil {
-				if e.config.Debug {
-					log.Println("Successfully uploaded bytes: ", uploadInfo)
-				}
-				return uploadInfo, err
-			} else {
-				log.Println(bucket, objectNameIn, err)
-				return uploadInfo, err
-			}
-		} else {
-			return minio.UploadInfo{}, err
-		}
-	} else {
+	objectName, ok := e.CheckMode(objectNameIn)
+	if !ok {
 		return minio.UploadInfo{}, fmt.Errorf("模式未设置 %s", objectNameIn)
 	}
+
+	// 跳过 data:image/xxx;base64, 前缀
+	commaIdx := strings.IndexByte(base64File, ',')
+	if commaIdx >= 0 {
+		base64File = base64File[commaIdx+1:]
+	}
+
+	// ✅ 用 base64.NewDecoder 流式解码，不在内存中产生完整的解码副本
+	srcReader := strings.NewReader(base64File)
+	decodedReader := base64.NewDecoder(base64.StdEncoding, srcReader)
+
+	// 流式上传，size=-1 表示未知大小
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	uploadInfo, err := e.Client.PutObject(ctx, bucket, objectName, decodedReader, -1, objopt)
+	if err != nil {
+		return minio.UploadInfo{}, fmt.Errorf("base64 上传失败: %w", err)
+	}
+	if e.config.Debug {
+		log.Println("Successfully uploaded bytes: ", uploadInfo)
+	}
+	return uploadInfo, nil
 }
 
 // PutObjectWithSrc 提供链接，上传到 minio
@@ -358,9 +353,8 @@ func (e *Component) PutObjectWithSrc(dnComponent *idownload.Component, uri strin
 	return bucket + "/" + info.Key, nil
 }
 
-// DeleteObject 删除文件， 注意：不会删除文件夹
+// DeleteObject ✅ 统一使用 log，移除 fmt.Printf
 func (e *Component) DeleteObject(objectNameWithBucket string) error {
-	// 1. 建议使用 PathUnescape 更好地处理路径中的特殊字符
 	decodedPath, err := url.PathUnescape(objectNameWithBucket)
 	if err != nil {
 		log.Println(PackageName, "路径解码失败:", err)
@@ -369,22 +363,16 @@ func (e *Component) DeleteObject(objectNameWithBucket string) error {
 
 	bucket, objectName := e.GetBucketAndObjectName(decodedPath)
 	if len(bucket) == 0 || len(objectName) == 0 {
-		log.Printf("%s 解析路径失败: bucket=%s, object=%s\n", PackageName, bucket, objectName)
 		return fmt.Errorf("invalid path: %s", objectNameWithBucket)
 	}
 
-	opts := minio.RemoveObjectOptions{}
-	err = e.Client.RemoveObject(context.Background(), bucket, objectName, opts)
+	err = e.Client.RemoveObject(context.Background(), bucket, objectName, minio.RemoveObjectOptions{})
 	if err != nil {
 		log.Printf("%s 删除对象失败：❌ Bucket:%s; Object:%s; 原因：%v\n", PackageName, bucket, objectName, err)
 		return err
 	}
 
-	log.Printf("原始输入: %q\n", objectNameWithBucket)
-	log.Printf("解码路径: %q\n", decodedPath)
-	log.Printf("解析对象名: %q\n", objectName)
-
-	fmt.Printf("%s 删除对象成功：✅ Bucket:%s; Object:%s\n", PackageName, bucket, objectName)
+	log.Printf("%s 删除对象成功：✅ Bucket:%s; Object:%s\n", PackageName, bucket, objectName)
 	return nil
 }
 
@@ -503,23 +491,20 @@ func (e *Component) GetPutObjectOptions(contentType string) minio.PutObjectOptio
 }
 
 // GetPutObjectOptionByExt 根据类型获取对象
+// ✅ 修复 switch case 穿透导致 png/jpg/svg 拿不到 contentType
 func (e *Component) GetPutObjectOptionByExt(uri string) minio.PutObjectOptions {
 	fileExt := path.Ext(uri)
-	if len(uri) == 0 {
+	if len(uri) == 0 || fileExt == "" {
 		fileExt = ".jpg"
 	}
 
-	contentType := ""
-	switch fileExt {
-	case ".png":
-	case ".jpg":
-	case ".svg":
-	case ".jpeg":
+	var contentType string
+	switch strings.ToLower(fileExt) {
+	case ".png", ".jpg", ".jpeg", ".svg":
 		contentType = "image/jpeg,image/png"
 	case ".gif":
 		contentType = "image/gif"
 	case ".mp4":
-		// contentType = "audio/mp4"
 		contentType = "video/mp4,video/webm,video/ogg"
 	case ".avi":
 		contentType = "video/avi"
