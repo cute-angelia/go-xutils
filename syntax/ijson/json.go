@@ -2,16 +2,27 @@ package ijson
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"text/scanner"
 
 	"github.com/json-iterator/go"
 )
 
 // 使用 ConfigCompatibleWithStandardLibrary 确保与标准库行为一致
-var parser = jsoniter.ConfigCompatibleWithStandardLibrary
+var parser = jsoniter.Config{
+	SortMapKeys:            true, // Highly recommended for logs/diffs
+	ValidateJsonRawMessage: true,
+}.Froze()
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
 
 // WriteFile 写入数据到 JSON 文件
 func WriteFile(filePath string, data interface{}) error {
@@ -57,11 +68,27 @@ func UnmarshalSlice[T any](data []byte, v *[]T) error {
 	return parser.Unmarshal(data, v)
 }
 
-// Pretty 获取格式化的 JSON 字符串
-func Pretty(v interface{}) (string, error) {
-	// 这里建议统一使用 parser 以保持数值转换逻辑一致
-	out, err := parser.MarshalIndent(v, "", "    ")
-	return string(out), err
+// 直接打印到控制台，完全省掉 string 转换和外部 copy
+func LogPretty(v interface{}) {
+	if v == nil {
+		fmt.Println("null")
+		return
+	}
+
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufferPool.Put(buf)
+
+	enc := parser.NewEncoder(buf)
+	enc.SetIndent("", "    ")
+
+	if err := enc.Encode(v); err != nil {
+		fmt.Printf("json_err: %v\n", err)
+		return
+	}
+
+	// 直接把内存里的字节流刷到标准输出，这是最快的，没有任何多余分配
+	os.Stdout.Write(buf.Bytes())
 }
 
 // 正则预编译
