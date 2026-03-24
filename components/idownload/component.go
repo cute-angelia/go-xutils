@@ -177,6 +177,7 @@ func (d *Component) Download(strURL, filename string) (fileInfo FileInfo, errRes
 		contentLength, _ := strconv.Atoi(header.Get("Content-Length"))
 		fileInfo, errResp = d.multiDownload(strURL, filename, contentLength)
 		if errResp != nil && d.config.RetryAttempt > 0 {
+			log.Println("下载失败：错误：", strURL, errResp, "开始重试：", d.config.RetryAttempt)
 			NewRetry(d.config.RetryAttempt, d.config.RetryWaitTime).Func(func() error {
 				log.Println("NewRetry multiDownload", strURL, filename)
 				fileInfo, errResp = d.multiDownload(strURL, filename, contentLength)
@@ -186,13 +187,20 @@ func (d *Component) Download(strURL, filename string) (fileInfo FileInfo, errRes
 				return nil
 			}).Do(ctx)
 		}
+
+		if errResp != nil {
+			log.Println("下载失败：错误：", strURL, errResp)
+		} else {
+			log.Println("下载成功", strURL, fileInfo.Path)
+		}
+
 		return fileInfo, errResp
 	}
 
 	// 单例下载
 	fileInfo, errResp = d.singleDownload(strURL, filename)
 	if errResp != nil {
-		log.Println("下载失败：错误：", strURL, errResp)
+		log.Println("下载失败：错误：", strURL, errResp, "开始重试：", d.config.RetryAttempt)
 		if d.config.RetryAttempt > 0 {
 			NewRetry(d.config.RetryAttempt, d.config.RetryWaitTime).Func(func() error {
 				log.Println("NewRetry singleDownload", strURL, filename)
@@ -204,6 +212,8 @@ func (d *Component) Download(strURL, filename string) (fileInfo FileInfo, errRes
 				return nil
 			}).Do(ctx)
 		}
+	} else {
+		log.Println("下载成功", strURL, fileInfo.Path)
 	}
 	return fileInfo, errResp
 }
@@ -315,15 +325,19 @@ func (d *Component) multiDownload(strURL, filename string, contentLen int) (File
 		return info, fmt.Errorf("创建分片目录失败: %w", err)
 	}
 
-	eg := new(errgroup.Group)
+	// 注意：ctx 绑定到当前下载生命周期，超时后所有分片请求同步取消
+	ctx, cancel := context.WithTimeout(context.Background(), d.config.Timeout)
+	defer cancel()
+
+	eg, ctx := errgroup.WithContext(ctx) // ← 用 errgroup 携带 ctx，任一分片失败立即取消其余
 	rangeStart := 0
 
 	for i := 0; i < d.config.Concurrency; i++ {
-		i, rangeStart := i, rangeStart // 捕获循环变量
+		i, rangeStart := i, rangeStart
 
-		rangeEnd := rangeStart + partSize
+		rangeEnd := rangeStart + partSize - 1 // ← 闭区间，不含下一片起点
 		if i == d.config.Concurrency-1 {
-			rangeEnd = contentLen
+			rangeEnd = contentLen - 1 // ← 修复：最后一片到 contentLen-1，不是 contentLen
 		}
 
 		eg.Go(func() error {
@@ -337,14 +351,14 @@ func (d *Component) multiDownload(strURL, filename string, contentLen int) (File
 					bar.Add(downloaded)
 				}
 			}
-			return d.downloadPartial(strURL, filename, rangeStart+downloaded, rangeEnd, i, bar)
+			// 传入 ctx，分片请求可被取消
+			return d.downloadPartial(ctx, strURL, filename, rangeStart+downloaded, rangeEnd, i, bar)
 		})
 
-		rangeStart += partSize + 1
+		rangeStart = rangeEnd + 1 // ← 修复：严格衔接，不跳过任何字节
 	}
 
 	if err := eg.Wait(); err != nil {
-		// 分片下载失败，清理所有临时文件
 		if cleanErr := d.CleanPartFiles(filename); cleanErr != nil {
 			log.Println("清理分片文件失败:", cleanErr)
 		}
@@ -352,7 +366,6 @@ func (d *Component) multiDownload(strURL, filename string, contentLen int) (File
 	}
 
 	if err := d.merge(filename); err != nil {
-		// 合并失败，清理所有临时文件
 		if cleanErr := d.CleanPartFiles(filename); cleanErr != nil {
 			log.Println("清理分片文件失败:", cleanErr)
 		}
@@ -443,13 +456,15 @@ func (d *Component) newBar(length int, name string) *progressbar.ProgressBar {
 }
 
 // downloadPartial 下载单个分片，错误向上返回（不再静默丢弃）
-func (d *Component) downloadPartial(strURL, filename string, rangeStart, rangeEnd, i int, bar *progressbar.ProgressBar) error {
-	if rangeStart >= rangeEnd {
+func (d *Component) downloadPartial(ctx context.Context, strURL, filename string, rangeStart, rangeEnd, i int, bar *progressbar.ProgressBar) error {
+	if rangeStart > rangeEnd {
 		return nil
 	}
 
 	iClient := d.getGoHttpClient(strURL, "GET").Client()
-	req, err := http.NewRequest("GET", strURL, nil)
+
+	// ← 修复：用 ctx 创建请求，超时/取消真正生效
+	req, err := http.NewRequestWithContext(ctx, "GET", strURL, nil)
 	if err != nil {
 		return fmt.Errorf("分片 %d 创建请求失败: %w", i, err)
 	}
@@ -465,6 +480,11 @@ func (d *Component) downloadPartial(strURL, filename string, rangeStart, rangeEn
 		return fmt.Errorf("分片 %d 请求失败: %w", i, err)
 	}
 	defer resp.Body.Close()
+
+	// 206 Partial Content 才是正常分片响应
+	if resp.StatusCode != http.StatusPartialContent {
+		return fmt.Errorf("分片 %d 服务端返回非 206: %d", i, resp.StatusCode)
+	}
 
 	flags := os.O_CREATE | os.O_WRONLY
 	if d.config.Resume {
@@ -489,7 +509,6 @@ func (d *Component) downloadPartial(strURL, filename string, rangeStart, rangeEn
 	}
 	return nil
 }
-
 func (d *Component) merge(filename string) error {
 	destFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
