@@ -37,10 +37,8 @@ func SanitizeName(name string, replacement string) string {
 
 	result := builder.String()
 
-	// 去除首尾空格和点（Windows 规范）
-	result = strings.TrimSpace(result)
-	// 注意：如果是处理目录名，Trim 点号是正确的；如果是带后缀的文件名，这里需要小心
-	result = strings.Trim(result, ".")
+	// 仅去除末尾的空格和末尾所有的点（符合 Windows 文件夹规范）
+	result = strings.TrimRight(strings.TrimSpace(result), ".")
 
 	// 检查处理后是否为空
 	if result == "" {

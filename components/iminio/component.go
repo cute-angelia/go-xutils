@@ -226,9 +226,20 @@ func (e *Component) PutObject(bucket string, objectNameIn string, reader io.Read
 
 	// 流式上传：size=-1 时不设 PartSize（无效），改用 SendContentMd5 减少重传风险
 	if objectSize <= 0 {
-		objopt.PartSize = 0
+		// ✅ 必须设 PartSize，否则 SDK 全量缓冲
+		if objopt.PartSize == 0 {
+			objopt.PartSize = 32 * 1024 * 1024 // 32MB 每片，内存占用恒定
+		}
 		objopt.Progress = nil
 	} else {
+		// ✅ size 已知时，动态计算分片大小，保证不超过 10000 片
+		if objopt.PartSize == 0 {
+			partSize := uint64(objectSize) / 10000
+			if partSize < 32*1024*1024 {
+				partSize = 32 * 1024 * 1024 // 最小 32MB
+			}
+			objopt.PartSize = partSize
+		}
 		objopt.Progress = progress.NewUploadProgress(objectSize)
 	}
 
