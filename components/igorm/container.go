@@ -84,6 +84,12 @@ func WithMaxLifetime(maxLifetime time.Duration) Option {
 	}
 }
 
+func WithMaxIdleTime(maxIdleTime time.Duration) Option {
+	return func(c *Container) {
+		c.config.MaxIdleTime = maxIdleTime
+	}
+}
+
 func WithDsn(dsn string) Option {
 	return func(c *Container) {
 		c.config.Dsn = dsn

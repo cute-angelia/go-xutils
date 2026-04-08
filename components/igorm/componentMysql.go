@@ -116,6 +116,9 @@ func (c *Component) initMysqlDb() *gorm.DB {
 	idb.SetMaxIdleConns(c.config.MaxIdleConns)   // ==>  用于设置连接池中空闲连接的最大数量(10)
 	idb.SetMaxOpenConns(c.config.MaxOpenConns)   // ==>  设置打开数据库连接的最大数量(100)
 	idb.SetConnMaxLifetime(c.config.MaxLifetime) // 最大时间
+	if c.config.MaxIdleTime > 0 {
+		idb.SetConnMaxIdleTime(c.config.MaxIdleTime)
+	}
 
 	return db
 }

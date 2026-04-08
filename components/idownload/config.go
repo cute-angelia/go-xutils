@@ -33,8 +33,9 @@ type config struct {
 	Resume bool
 
 	// 超时
-	Timeout time.Duration // 超时时间
-	Debug   bool          //  debug 日志
+	Timeout         time.Duration // // 单次 HTTP 请求超时
+	DownloadTimeout time.Duration // 整体下载超时（新增）；为 0 时自动推算为 Timeout*(Concurrency+1)
+	Debug           bool          //  debug 日志
 
 	Progressbar bool // 进度条开关
 }
