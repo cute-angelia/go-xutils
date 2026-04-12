@@ -24,14 +24,11 @@ func SanitizeName(name string, replacement string) string {
 		case strings.ContainsRune(illegalChars, r) || r == 0 || unicode.IsControl(r):
 			builder.WriteString(replacement)
 
-		// 2. 核心新增：过滤 Emoji 及其他特殊符号
-		// unicode.So 涵盖了绝大多数 Emoji (如 🍎, ⭐, 😃)
-		// unicode.IsSymbol 涵盖了数学符号、货币符号等 (如 ©, ®, ±)
-		case unicode.IsSymbol(r) || IsEmoji(r):
-			builder.WriteString(replacement)
+		case isSafeNameRune(r):
+			builder.WriteRune(r)
 
 		default:
-			builder.WriteRune(r)
+			builder.WriteString(replacement)
 		}
 	}
 
@@ -66,4 +63,21 @@ func SanitizeName(name string, replacement string) string {
 	}
 
 	return result
+}
+
+func isSafeNameRune(r rune) bool {
+	if r >= 'a' && r <= 'z' {
+		return true
+	}
+	if r >= 'A' && r <= 'Z' {
+		return true
+	}
+	if r >= '0' && r <= '9' {
+		return true
+	}
+	if unicode.Is(unicode.Han, r) {
+		return true
+	}
+
+	return strings.ContainsRune(" ._-()[]", r)
 }
