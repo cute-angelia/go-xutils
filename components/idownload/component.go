@@ -161,7 +161,16 @@ func (d *Component) Download(strURL, filename string) (fileInfo FileInfo, errRes
 	if downloadTimeout <= 0 {
 		downloadTimeout = d.config.Timeout * time.Duration(d.config.Concurrency+1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if downloadTimeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), downloadTimeout)
+	} else {
+		ctx = context.Background()
+		cancel = func() {}
+	}
+
 	defer cancel()
 
 	err := d.getGoHttpClient(strURL, "HEAD").BindHeader(&header).Code(&statusCode).Do()
@@ -339,16 +348,18 @@ func (d *Component) multiDownload(ctx context.Context, strURL, filename string, 
 	rangeStart := 0
 
 	for i := 0; i < d.config.Concurrency; i++ {
-		i, rangeStart := i, rangeStart
-
 		rangeEnd := rangeStart + partSize - 1
 		if i == d.config.Concurrency-1 {
 			rangeEnd = contentLen - 1
 		}
 
+		chunkIdx := i
+		chunkStart := rangeStart
+		chunkEnd := rangeEnd
+
 		eg.Go(func() error {
 			downloaded := 0
-			partFileName := d.getPartFilename(filename, i)
+			partFileName := d.getPartFilename(filename, chunkIdx)
 
 			if d.config.Resume {
 				if content, err := os.ReadFile(partFileName); err == nil {
@@ -359,7 +370,7 @@ func (d *Component) multiDownload(ctx context.Context, strURL, filename string, 
 				}
 			}
 
-			partLen := rangeEnd - rangeStart + 1
+			partLen := chunkEnd - chunkStart + 1
 
 			// 分片已完整，跳过请求
 			if downloaded >= partLen {
@@ -368,7 +379,7 @@ func (d *Component) multiDownload(ctx context.Context, strURL, filename string, 
 
 			// isAppend：Resume 且本次是续传（有已下载内容）
 			isAppend := d.config.Resume && downloaded > 0
-			return d.downloadPartial(egCtx, strURL, filename, rangeStart+downloaded, rangeEnd, i, isAppend, bar)
+			return d.downloadPartial(egCtx, strURL, filename, chunkStart+downloaded, chunkEnd, chunkIdx, isAppend, bar)
 		})
 
 		rangeStart = rangeEnd + 1

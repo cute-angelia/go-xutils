@@ -10,7 +10,6 @@ import (
 
 	"github.com/cute-angelia/go-xutils/syntax/icmd"
 	"github.com/cute-angelia/go-xutils/syntax/ifile"
-	"github.com/cute-angelia/go-xutils/syntax/ijson"
 )
 
 const (
@@ -41,7 +40,6 @@ func (c *Component) generateText(ext []string) (tempText string, err error) {
 		// 生成一个文件用于合并： 格式
 		// file ./name.mov
 		// log.Println(c.getTempText())
-		log.Println(ijson.Pretty(files))
 
 		if itempText, err := ifile.CreateFile(text); err != nil {
 			return "", err
@@ -86,7 +84,6 @@ func (c *Component) ConcatMovFiles(ext []string, saveName string) error {
 			c.config.FilesPath + "/success/" + saveName,
 		}, c.config.Timeout)
 
-		//log.Println(ijson.Pretty(status))
 
 		if len(status.Stderr) > 0 {
 			err := errors.New(strings.Join(status.Stderr, ""))
