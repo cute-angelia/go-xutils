@@ -445,6 +445,7 @@ func (d *Component) singleDownload(ctx context.Context, strURL, filename string)
 	}
 
 	if err != nil {
+		_ = os.Remove(filename)
 		return info, err
 	}
 
@@ -559,10 +560,12 @@ func (d *Component) merge(filename string) error {
 		partFileName := d.getPartFilename(filename, i)
 		partFile, err := os.Open(partFileName)
 		if err != nil {
+			_ = os.Remove(filename)
 			return fmt.Errorf("打开分片 %d 失败: %w", i, err)
 		}
 		if _, err = io.Copy(destFile, partFile); err != nil {
 			partFile.Close()
+			_ = os.Remove(filename)
 			return fmt.Errorf("合并分片 %d 失败: %w", i, err)
 		}
 		partFile.Close()

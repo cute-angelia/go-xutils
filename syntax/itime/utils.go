@@ -11,7 +11,7 @@ func GetMonthDate() (*TheTime, *TheTime) {
 	currentYear, currentMonth, _ := now.Date()
 	currentLocation := now.Location()
 	firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
-	lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
+	lastOfMonth := firstOfMonth.AddDate(0, 1, 0).Add(-time.Second)
 	return &TheTime{unix: firstOfMonth.Unix()}, &TheTime{unix: lastOfMonth.Unix()}
 }
 
@@ -29,7 +29,7 @@ func GetWeekDate() (*TheTime, *TheTime) {
 		lastoffset = -1
 	}
 	firstOfWeek := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, offset)
-	lastOfWeeK := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, lastoffset+1)
+	lastOfWeeK := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, lastoffset+2).Add(-time.Second)
 	return &TheTime{unix: firstOfWeek.Unix()}, &TheTime{unix: lastOfWeeK.Unix()}
 }
 
@@ -68,7 +68,7 @@ func GetYearDate() (*TheTime, *TheTime) {
 	currentLocation := now.Location()
 
 	first := time.Date(currentYear, 1, 1, 0, 0, 0, 0, currentLocation)
-	last := first.AddDate(1, 0, -1)
+	last := first.AddDate(1, 0, 0).Add(-time.Second)
 	return &TheTime{unix: first.Unix()}, &TheTime{unix: last.Unix()}
 }
 
@@ -77,6 +77,9 @@ func GetYearDate() (*TheTime, *TheTime) {
 func GetBetweenDates(sdate, edate string) []string {
 	d := []string{}
 	timeFormatTpl := "2006-01-02 15:04:05"
+	if len(sdate) > len(timeFormatTpl) || len(edate) > len(timeFormatTpl) {
+		return d
+	}
 	if len(timeFormatTpl) != len(sdate) {
 		timeFormatTpl = timeFormatTpl[0:len(sdate)]
 	}
@@ -96,15 +99,11 @@ func GetBetweenDates(sdate, edate string) []string {
 	}
 	// 输出日期格式固定
 	timeFormatTpl = "2006-01-02"
-	date2Str := date2.Format(timeFormatTpl)
-	d = append(d, date.Format(timeFormatTpl))
-	for {
+	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+	date2 = time.Date(date2.Year(), date2.Month(), date2.Day(), 0, 0, 0, 0, date2.Location())
+	for !date.After(date2) {
+		d = append(d, date.Format(timeFormatTpl))
 		date = date.AddDate(0, 0, 1)
-		dateStr := date.Format(timeFormatTpl)
-		d = append(d, dateStr)
-		if dateStr == date2Str {
-			break
-		}
 	}
 	return d
 }

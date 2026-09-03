@@ -218,7 +218,7 @@ func (t *TheTime) GetWeekDayChinese() int {
 }
 
 func (t *TheTime) AddDate(years int, months int, days int) *TheTime {
-	t.GetTime().AddDate(years, months, days)
+	t.unix = t.GetTime().AddDate(years, months, days).Unix()
 	return t
 }
 
