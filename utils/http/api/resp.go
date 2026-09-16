@@ -73,6 +73,9 @@ func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, ms
 	if len(crypto) == 0 {
 		crypto = GlobalDefaultCrypto
 	}
+	if len(crypto) == 0 {
+		crypto = "3"
+	}
 	if len(cryptoKey) > 0 {
 		var randomKey = irandom.RandString(16, irandom.LetterAll)
 		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
@@ -121,6 +124,9 @@ func SuccessEncryptWithPage(w http.ResponseWriter, r *http.Request, data interfa
 	crypto := r.URL.Query().Get("crypto")
 	if len(crypto) == 0 {
 		crypto = GlobalDefaultCrypto
+	}
+	if len(crypto) == 0 {
+		crypto = "3"
 	}
 	if len(cryptoKey) > 0 {
 		var randomKey = irandom.RandString(16, irandom.LetterAll)
