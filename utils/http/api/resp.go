@@ -12,10 +12,22 @@ import (
 	"time"
 )
 
-var LogRequestAndData = true
+var (
+	LogRequestAndData   = true
+	GlobalCryptoKey     = ""
+	GlobalDefaultCrypto = ""
+)
 
 func LogOn(on bool) {
 	LogRequestAndData = on
+}
+
+func SetGlobalCryptoKey(key string) {
+	GlobalCryptoKey = key
+}
+
+func SetGlobalDefaultCrypto(cryptoType string) {
+	GlobalDefaultCrypto = cryptoType
 }
 
 // Res 标准JSON输出格式
@@ -58,6 +70,9 @@ func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, ms
 	}
 
 	crypto := r.URL.Query().Get("crypto")
+	if len(crypto) == 0 {
+		crypto = GlobalDefaultCrypto
+	}
 	if len(cryptoKey) > 0 {
 		var randomKey = irandom.RandString(16, irandom.LetterAll)
 		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
@@ -92,8 +107,63 @@ func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, ms
 	doResp(w, r, response)
 }
 
+// SuccessEncryptWithPage 成功分页返回 (支持加密)
+func SuccessEncryptWithPage(w http.ResponseWriter, r *http.Request, data interface{}, msg string, pager Pagination, cryptoKey string) {
+	response := ResPage{
+		Res: Res{
+			Code: 0,
+			Msg:  msg,
+			Data: data,
+		},
+		Pagination: pager,
+	}
+
+	crypto := r.URL.Query().Get("crypto")
+	if len(crypto) == 0 {
+		crypto = GlobalDefaultCrypto
+	}
+	if len(cryptoKey) > 0 {
+		var randomKey = irandom.RandString(16, irandom.LetterAll)
+		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
+		datam, _ := json.Marshal(data)
+
+		// 1: AES-CBC 模式
+		if crypto == "1" {
+			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("SuccessEncryptWithPage AES-CBC error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
+		// 2: xor
+		if crypto == "2" {
+			encryptData := iXor.XorEncrypt(datam, cryptoId)
+			response.Data = randomKey + encryptData
+		}
+		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
+		if crypto == "3" {
+			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("SuccessEncryptWithPage AES-GCM error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
+	}
+	doResp(w, r, response)
+}
+
 // Success 成功返回
 func Success(w http.ResponseWriter, r *http.Request, data interface{}, msg string) {
+	crypto := r.URL.Query().Get("crypto")
+	if len(crypto) == 0 {
+		crypto = GlobalDefaultCrypto
+	}
+	if len(crypto) > 0 && len(GlobalCryptoKey) > 0 {
+		SuccessEncrypt(w, r, data, msg, GlobalCryptoKey)
+		return
+	}
 	response := Res{
 		Code: 0,
 		Msg:  msg,
@@ -104,6 +174,14 @@ func Success(w http.ResponseWriter, r *http.Request, data interface{}, msg strin
 
 // SuccessWithPage 成功分页返回
 func SuccessWithPage(w http.ResponseWriter, r *http.Request, data interface{}, msg string, pager Pagination) {
+	crypto := r.URL.Query().Get("crypto")
+	if len(crypto) == 0 {
+		crypto = GlobalDefaultCrypto
+	}
+	if len(crypto) > 0 && len(GlobalCryptoKey) > 0 {
+		SuccessEncryptWithPage(w, r, data, msg, pager, GlobalCryptoKey)
+		return
+	}
 	response := ResPage{
 		Res: Res{
 			Code: 0,

@@ -91,3 +91,35 @@ func TestSuccessEncrypt_AES_CBC(t *testing.T) {
 		t.Fatalf("Decrypted data mismatch: %v", decryptedData)
 	}
 }
+
+func TestSuccess_AutoEncrypt_GlobalKey(t *testing.T) {
+	cryptoKey := "1234567890123456"
+	SetGlobalCryptoKey(cryptoKey)
+	defer SetGlobalCryptoKey("")
+
+	reqData := map[string]interface{}{"msg": "auto encrypt"}
+	req, _ := http.NewRequest("GET", "/test?crypto=3", nil)
+	rr := httptest.NewRecorder()
+
+	Success(rr, req, reqData, "ok")
+
+	var res Res
+	_ = json.NewDecoder(rr.Body).Decode(&res)
+
+	cipherStr := res.Data.(string)
+	randomKey := cipherStr[:16]
+	ciphertextBase64 := cipherStr[16:]
+	cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
+
+	decryptedBytes, err := iAes.DecryptGCMFromBase64(ciphertextBase64, []byte(cryptoId))
+	if err != nil {
+		t.Fatalf("DecryptGCMFromBase64 failed: %v", err)
+	}
+
+	var decryptedData map[string]interface{}
+	_ = json.Unmarshal(decryptedBytes, &decryptedData)
+
+	if decryptedData["msg"] != "auto encrypt" {
+		t.Fatalf("Decrypted data mismatch: %v", decryptedData)
+	}
+}
