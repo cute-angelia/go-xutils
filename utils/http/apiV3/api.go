@@ -235,19 +235,37 @@ func (that *api) Error(err error) {
 func (that *api) cryptoData() {
 	crypto := that.r.URL.Query().Get("crypto")
 	if len(crypto) > 0 {
+		// 如果 URL query 指定了 1, 2, 3，动态覆盖当前请求的加密类型
+		if cType, err := strconv.Atoi(crypto); err == nil && cType > 0 {
+			that.cryptoType = CryptoType(cType)
+		}
+
 		var randomKey = irandom.RandString(16, irandom.LetterAll)
 		cryptoId := that.cryptoKey + randomKey
 		datam, _ := json.Marshal(that.respStruct.Data)
 
-		// Crypto 加密 Key：使用AES-GCM模式,处理密钥、认证、加密一次完成
-		if that.cryptoType == 1 {
-			encryptData, _ := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
-			that.respStruct.Data = randomKey + encryptData
+		// 1: AES-CBC 模式
+		if that.cryptoType == CryptoTypeAES || that.cryptoType == 1 {
+			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV3 cryptoData AES-CBC error:", err)
+			} else {
+				that.respStruct.Data = randomKey + encryptData
+			}
 		}
-		// xor
-		if that.cryptoType == 2 {
+		// 2: xor
+		if that.cryptoType == CryptoTypeXOR || that.cryptoType == 2 {
 			encryptData := iXor.XorEncrypt(datam, cryptoId)
 			that.respStruct.Data = randomKey + encryptData
+		}
+		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
+		if that.cryptoType == CryptoTypeAESGCM || that.cryptoType == 3 {
+			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV3 cryptoData AES-GCM error:", err)
+			} else {
+				that.respStruct.Data = randomKey + encryptData
+			}
 		}
 	}
 }

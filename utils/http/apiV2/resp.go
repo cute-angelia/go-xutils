@@ -2,12 +2,17 @@ package apiV2
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cute-angelia/go-xutils/syntax/irandom"
+	"github.com/cute-angelia/go-xutils/utils/iAes"
+	"github.com/cute-angelia/go-xutils/utils/iXor"
 )
 
 var LogRequestAndData = true
@@ -60,6 +65,91 @@ func SuccessWithPage(w http.ResponseWriter, r *http.Request, data interface{}, m
 			Data: data,
 		},
 		Pagination: pager,
+	}
+	doResp(w, r, response)
+}
+
+// SuccessEncrypt 成功返回 (支持加密 1:AES-CBC, 2:XOR, 3:AES-GCM)
+func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, msg string, cryptoKey string) {
+	response := Res{
+		Code: 0,
+		Msg:  msg,
+		Data: data,
+	}
+
+	crypto := r.URL.Query().Get("crypto")
+	if len(cryptoKey) > 0 {
+		var randomKey = irandom.RandString(16, irandom.LetterAll)
+		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
+		datam, _ := json.Marshal(data)
+
+		// 1: AES-CBC 模式
+		if crypto == "1" {
+			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV2 SuccessEncrypt AES-CBC error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
+		// 2: xor
+		if crypto == "2" {
+			encryptData := iXor.XorEncrypt(datam, cryptoId)
+			response.Data = randomKey + encryptData
+		}
+		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
+		if crypto == "3" {
+			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV2 SuccessEncrypt AES-GCM error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
+	}
+	doResp(w, r, response)
+}
+
+// SuccessEncryptWithPage 成功分页返回 (支持加密 1:AES-CBC, 2:XOR, 3:AES-GCM)
+func SuccessEncryptWithPage(w http.ResponseWriter, r *http.Request, data interface{}, msg string, pager Pagination, cryptoKey string) {
+	response := ResPage{
+		Res: Res{
+			Code: 0,
+			Msg:  msg,
+			Data: data,
+		},
+		Pagination: pager,
+	}
+
+	crypto := r.URL.Query().Get("crypto")
+	if len(cryptoKey) > 0 {
+		var randomKey = irandom.RandString(16, irandom.LetterAll)
+		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
+		datam, _ := json.Marshal(data)
+
+		// 1: AES-CBC 模式
+		if crypto == "1" {
+			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV2 SuccessEncryptWithPage AES-CBC error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
+		// 2: xor
+		if crypto == "2" {
+			encryptData := iXor.XorEncrypt(datam, cryptoId)
+			response.Data = randomKey + encryptData
+		}
+		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
+		if crypto == "3" {
+			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("apiV2 SuccessEncryptWithPage AES-GCM error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
+		}
 	}
 	doResp(w, r, response)
 }

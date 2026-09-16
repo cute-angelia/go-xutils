@@ -65,15 +65,28 @@ func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, ms
 
 		log.Println(cryptoId, "cryptoId")
 
-		// Crypto 加密 Key：使用AES-GCM模式,处理密钥、认证、加密一次完成
+		// 1: AES-CBC 模式
 		if crypto == "1" {
-			encryptData, _ := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
-			response.Data = randomKey + encryptData
+			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("SuccessEncrypt AES-CBC error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
 		}
-		// xor
+		// 2: xor
 		if crypto == "2" {
 			encryptData := iXor.XorEncrypt(datam, cryptoId)
 			response.Data = randomKey + encryptData
+		}
+		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
+		if crypto == "3" {
+			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+			if err != nil {
+				log.Println("SuccessEncrypt AES-GCM error:", err)
+			} else {
+				response.Data = randomKey + encryptData
+			}
 		}
 	}
 	doResp(w, r, response)

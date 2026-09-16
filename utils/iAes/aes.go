@@ -28,6 +28,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"io"
 )
 
@@ -55,4 +56,89 @@ func EncryptCBCToBase64(plaintext []byte, key []byte) (string, error) {
 	} else {
 		return base64.StdEncoding.EncodeToString(result), nil
 	}
+}
+
+// DecryptCBC 密码块链接解密
+func DecryptCBC(ciphertext []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	if len(ciphertext) < aes.BlockSize {
+		return nil, errors.New("ciphertext too short")
+	}
+	iv := ciphertext[:aes.BlockSize]
+	ciphertext = ciphertext[aes.BlockSize:]
+	if len(ciphertext)%aes.BlockSize != 0 {
+		return nil, errors.New("ciphertext is not a multiple of the block size")
+	}
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext)
+	return Unpad(plaintext, aes.BlockSize)
+}
+
+// DecryptCBCFromBase64 密码块链接解密 Base64
+func DecryptCBCFromBase64(ciphertextBase64 string, key []byte) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(ciphertextBase64)
+	if err != nil {
+		return nil, err
+	}
+	return DecryptCBC(data, key)
+}
+
+// EncryptGCM AES-GCM (AEAD 认证加密)
+// nonce 长度为 12 字节，拼在密文头部返回: nonce(12B) + ciphertext + tag(16B)
+func EncryptGCM(plaintext []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+	return ciphertext, nil
+}
+
+// EncryptGCMToBase64 AES-GCM 加密并转为 Base64
+func EncryptGCMToBase64(plaintext []byte, key []byte) (string, error) {
+	result, err := EncryptGCM(plaintext, key)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(result), nil
+}
+
+// DecryptGCM AES-GCM (AEAD 认证解密)
+// 数据格式为: nonce(12B) + ciphertext + tag(16B)
+func DecryptGCM(ciphertext []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+	nonce, cipherPayload := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	return gcm.Open(nil, nonce, cipherPayload, nil)
+}
+
+// DecryptGCMFromBase64 AES-GCM 解密 Base64
+func DecryptGCMFromBase64(ciphertextBase64 string, key []byte) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(ciphertextBase64)
+	if err != nil {
+		return nil, err
+	}
+	return DecryptGCM(data, key)
 }
