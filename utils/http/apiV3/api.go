@@ -14,7 +14,7 @@ import (
 	"github.com/go-ozzo/ozzo-validation/v4"
 )
 
-type api struct {
+type Api struct {
 	w http.ResponseWriter
 	r *http.Request
 
@@ -30,6 +30,8 @@ type api struct {
 	respStruct Res // 返回结构体
 }
 
+type api = Api
+
 // Res 标准JSON输出格式
 type Res struct {
 	// Code 响应的业务错误码。0表示业务执行成功，非0表示业务执行失败。
@@ -37,7 +39,7 @@ type Res struct {
 	// Msg 响应的参考消息。前端可使用msg来做提示
 	Msg string `json:"msg"`
 	// Data 响应的具体数据
-	Data interface{} `json:"data,omitempty"`
+	Data interface{} `json:"data"`
 
 	Pagination *Pagination `json:"pagination,omitempty"`
 
@@ -75,8 +77,8 @@ func NewPagination(count, Page, pageSize int64) Pagination {
 }
 
 // Pagination 分页结构体 end
-func NewApi(w http.ResponseWriter, r *http.Request, opts ...Option) *api {
-	a := &api{
+func NewApi(w http.ResponseWriter, r *http.Request, opts ...Option) *Api {
+	a := &Api{
 		w:          w,
 		r:          r,
 		isLogOn:    true,                              // 默認值
@@ -88,6 +90,12 @@ func NewApi(w http.ResponseWriter, r *http.Request, opts ...Option) *api {
 		opt(a)
 	}
 	return a
+}
+
+// SetReq 手动设置请求结构体或数据，用于日志记录
+func (that *Api) SetReq(req any) *Api {
+	that.reqStruct = req
+	return that
 }
 
 // Decode request
@@ -274,7 +282,15 @@ func (that *api) logr(tag string) {
 	defer func() { recover() }()
 
 	// 为了不破坏 respStruct 的 Data 类型，这里局部序列化
-	dataReq, _ := json.Marshal(that.reqStruct)
+	reqData := that.reqStruct
+	if reqData == nil {
+		if len(that.r.URL.Query()) > 0 {
+			reqData = that.r.URL.Query()
+		} else {
+			reqData = map[string]interface{}{}
+		}
+	}
+	dataReq, _ := json.Marshal(reqData)
 	dataResp, _ := json.Marshal(that.respStruct)
 
 	uid := that.r.Header.Get("jwt_uid")
