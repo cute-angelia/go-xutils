@@ -241,40 +241,49 @@ func (that *api) Error(err error) {
 }
 
 func (that *api) cryptoData() {
+	// 安全策略：服务端已配置 cryptoKey + 非零 cryptoType 时，
+	// 强制加密，完全忽略客户端传入的 crypto 参数，防止：
+	//   1. crypto=0  绕过加密
+	//   2. crypto=1/2 降级为弱加密算法
+	if len(that.cryptoKey) > 0 && that.cryptoType > CryptoTypeNone {
+		that.doEncrypt()
+		return
+	}
+
+	// 服务端未配置密钥时，才信任客户端 crypto 参数（降级兼容旧逻辑）
 	crypto := that.r.URL.Query().Get("crypto")
-	if len(crypto) > 0 {
-		// 如果 URL query 指定了 1, 2, 3，动态覆盖当前请求的加密类型
-		if cType, err := strconv.Atoi(crypto); err == nil && cType > 0 {
-			that.cryptoType = CryptoType(cType)
-		}
+	if cType, err := strconv.Atoi(crypto); err == nil && cType > 0 {
+		that.cryptoType = CryptoType(cType)
+		that.doEncrypt()
+	}
+}
 
-		var randomKey = irandom.RandString(16, irandom.LetterAll)
-		cryptoId := that.cryptoKey + randomKey
-		datam, _ := json.Marshal(that.respStruct.Data)
+// doEncrypt 执行实际加密，写入 that.respStruct.Data
+func (that *api) doEncrypt() {
+	var randomKey = irandom.RandString(16, irandom.LetterAll)
+	cryptoId := that.cryptoKey + randomKey
+	datam, _ := json.Marshal(that.respStruct.Data)
 
-		// 1: AES-CBC 模式
-		if that.cryptoType == CryptoTypeAES || that.cryptoType == 1 {
-			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("apiV3 cryptoData AES-CBC error:", err)
-			} else {
-				that.respStruct.Data = randomKey + encryptData
-			}
+	switch that.cryptoType {
+	case CryptoTypeAES: // 1: AES-CBC
+		encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+		if err != nil {
+			log.Println("apiV3 doEncrypt AES-CBC error:", err)
+			return
 		}
-		// 2: xor
-		if that.cryptoType == CryptoTypeXOR || that.cryptoType == 2 {
-			encryptData := iXor.XorEncrypt(datam, cryptoId)
-			that.respStruct.Data = randomKey + encryptData
+		that.respStruct.Data = randomKey + encryptData
+
+	case CryptoTypeXOR: // 2: XOR
+		encryptData := iXor.XorEncrypt(datam, cryptoId)
+		that.respStruct.Data = randomKey + encryptData
+
+	case CryptoTypeAESGCM: // 3: AES-GCM (AEAD)
+		encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+		if err != nil {
+			log.Println("apiV3 doEncrypt AES-GCM error:", err)
+			return
 		}
-		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
-		if that.cryptoType == CryptoTypeAESGCM || that.cryptoType == 3 {
-			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("apiV3 cryptoData AES-GCM error:", err)
-			} else {
-				that.respStruct.Data = randomKey + encryptData
-			}
-		}
+		that.respStruct.Data = randomKey + encryptData
 	}
 }
 

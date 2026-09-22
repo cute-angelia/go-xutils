@@ -55,62 +55,58 @@ type Pagination struct {
 	Total int64 `json:"total"`
 }
 
-// SuccessEncrypt 成功返回
-func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, msg string, cryptoKey string) {
-	// 上线改这个
-	// debug := r.URL.Query().Get("debug")
-	//if len(debug) == 0 || debug == "false" {
-	//	cryptoId = random.RandString(16, random.LetterAll)
-	//}
+// doEncryptData 执行加密，安全策略：完全使用服务端配置，忽略客户端 crypto 参数，
+// 防止攻击者通过传 crypto=0/1/2 绕过或降级加密算法。
+func doEncryptData(data interface{}, cryptoKey string) (interface{}, string) {
+	// 加密类型完全由服务端决定：GlobalDefaultCrypto，兜底 "3"（AES-GCM）
+	cryptoType := GlobalDefaultCrypto
+	if len(cryptoType) == 0 {
+		cryptoType = "3"
+	}
 
+	var randomKey = irandom.RandString(16, irandom.LetterAll)
+	cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
+	datam, _ := json.Marshal(data)
+
+	switch cryptoType {
+	case "1": // AES-CBC
+		encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
+		if err != nil {
+			log.Println("doEncryptData AES-CBC error:", err)
+			return data, randomKey
+		}
+		return randomKey + encryptData, randomKey
+	case "2": // XOR
+		encryptData := iXor.XorEncrypt(datam, cryptoId)
+		return randomKey + encryptData, randomKey
+	default: // "3" AES-GCM (AEAD，默认最强)
+		encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
+		if err != nil {
+			log.Println("doEncryptData AES-GCM error:", err)
+			return data, randomKey
+		}
+		return randomKey + encryptData, randomKey
+	}
+}
+
+// SuccessEncrypt 成功加密返回
+// 安全说明：加密算法由服务端 GlobalDefaultCrypto 决定，客户端 crypto 参数不影响加密行为。
+func SuccessEncrypt(w http.ResponseWriter, r *http.Request, data interface{}, msg string, cryptoKey string) {
 	response := Res{
 		Code: 0,
 		Msg:  msg,
 		Data: data,
 	}
 
-	crypto := r.URL.Query().Get("crypto")
-	if len(crypto) == 0 {
-		crypto = GlobalDefaultCrypto
-	}
-	if len(crypto) == 0 {
-		crypto = "3"
-	}
 	if len(cryptoKey) > 0 {
-		var randomKey = irandom.RandString(16, irandom.LetterAll)
-		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
-		datam, _ := json.Marshal(data)
-
-		log.Println(cryptoId, "cryptoId")
-
-		// 1: AES-CBC 模式
-		if crypto == "1" {
-			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("SuccessEncrypt AES-CBC error:", err)
-			} else {
-				response.Data = randomKey + encryptData
-			}
-		}
-		// 2: xor
-		if crypto == "2" {
-			encryptData := iXor.XorEncrypt(datam, cryptoId)
-			response.Data = randomKey + encryptData
-		}
-		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
-		if crypto == "3" {
-			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("SuccessEncrypt AES-GCM error:", err)
-			} else {
-				response.Data = randomKey + encryptData
-			}
-		}
+		encryptedData, _ := doEncryptData(data, cryptoKey)
+		response.Data = encryptedData
 	}
 	doResp(w, r, response)
 }
 
-// SuccessEncryptWithPage 成功分页返回 (支持加密)
+// SuccessEncryptWithPage 成功分页加密返回
+// 安全说明：加密算法由服务端 GlobalDefaultCrypto 决定，客户端 crypto 参数不影响加密行为。
 func SuccessEncryptWithPage(w http.ResponseWriter, r *http.Request, data interface{}, msg string, pager Pagination, cryptoKey string) {
 	response := ResPage{
 		Res: Res{
@@ -121,52 +117,17 @@ func SuccessEncryptWithPage(w http.ResponseWriter, r *http.Request, data interfa
 		Pagination: pager,
 	}
 
-	crypto := r.URL.Query().Get("crypto")
-	if len(crypto) == 0 {
-		crypto = GlobalDefaultCrypto
-	}
-	if len(crypto) == 0 {
-		crypto = "3"
-	}
 	if len(cryptoKey) > 0 {
-		var randomKey = irandom.RandString(16, irandom.LetterAll)
-		cryptoId := fmt.Sprintf("%s%s", cryptoKey, randomKey)
-		datam, _ := json.Marshal(data)
-
-		// 1: AES-CBC 模式
-		if crypto == "1" {
-			encryptData, err := iAes.EncryptCBCToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("SuccessEncryptWithPage AES-CBC error:", err)
-			} else {
-				response.Data = randomKey + encryptData
-			}
-		}
-		// 2: xor
-		if crypto == "2" {
-			encryptData := iXor.XorEncrypt(datam, cryptoId)
-			response.Data = randomKey + encryptData
-		}
-		// 3: 真正的 AES-GCM 模式 (AEAD 认证加密，防篡改)
-		if crypto == "3" {
-			encryptData, err := iAes.EncryptGCMToBase64(datam, []byte(cryptoId))
-			if err != nil {
-				log.Println("SuccessEncryptWithPage AES-GCM error:", err)
-			} else {
-				response.Data = randomKey + encryptData
-			}
-		}
+		encryptedData, _ := doEncryptData(data, cryptoKey)
+		response.Data = encryptedData
 	}
 	doResp(w, r, response)
 }
 
 // Success 成功返回
+// 安全说明：只要服务端配置了 GlobalCryptoKey，无论客户端是否传 crypto 参数，都强制加密。
 func Success(w http.ResponseWriter, r *http.Request, data interface{}, msg string) {
-	crypto := r.URL.Query().Get("crypto")
-	if len(crypto) == 0 {
-		crypto = GlobalDefaultCrypto
-	}
-	if len(crypto) > 0 && len(GlobalCryptoKey) > 0 {
+	if len(GlobalCryptoKey) > 0 {
 		SuccessEncrypt(w, r, data, msg, GlobalCryptoKey)
 		return
 	}
@@ -179,12 +140,9 @@ func Success(w http.ResponseWriter, r *http.Request, data interface{}, msg strin
 }
 
 // SuccessWithPage 成功分页返回
+// 安全说明：只要服务端配置了 GlobalCryptoKey，无论客户端是否传 crypto 参数，都强制加密。
 func SuccessWithPage(w http.ResponseWriter, r *http.Request, data interface{}, msg string, pager Pagination) {
-	crypto := r.URL.Query().Get("crypto")
-	if len(crypto) == 0 {
-		crypto = GlobalDefaultCrypto
-	}
-	if len(crypto) > 0 && len(GlobalCryptoKey) > 0 {
+	if len(GlobalCryptoKey) > 0 {
 		SuccessEncryptWithPage(w, r, data, msg, pager, GlobalCryptoKey)
 		return
 	}
