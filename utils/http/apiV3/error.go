@@ -19,11 +19,12 @@ func NewApiError(code int32, message string) *ApiError {
 }
 
 func ApiErrorMsg(err error) *ApiError {
-	if err != nil {
-		var e *ApiError
-		if errors.As(err, &e) {
-			return e
-		}
+	if err == nil {
+		return &ApiError{Code: 0, Message: ""}
+	}
+	var e *ApiError
+	if errors.As(err, &e) {
+		return e
 	}
 	return &ApiError{
 		Code:    -1,

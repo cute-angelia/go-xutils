@@ -18,9 +18,6 @@ type Api struct {
 	w http.ResponseWriter
 	r *http.Request
 
-	isHasPage bool // 是否分页
-	pager     Pagination
-
 	cryptoType CryptoType // 加密方式：默认2
 	cryptoKey  string     // 是否加密：不为空为加密
 
@@ -83,7 +80,7 @@ func NewApi(w http.ResponseWriter, r *http.Request, opts ...Option) *Api {
 		r:          r,
 		isLogOn:    true,                              // 默認值
 		cryptoType: CryptoTypeXOR,                     // 默認值
-		cryptoKey:  CryptoEr.GetRequestContentType(r), // 默認值
+		cryptoKey:  CryptoEr.GetCryptoKey(r),          // 默認值
 	}
 	// 應用所有傳入的選項
 	for _, opt := range opts {
@@ -98,47 +95,52 @@ func (that *Api) SetReq(req any) *Api {
 	return that
 }
 
-// Decode request
+// Decode 解析请求数据到 v。
+// GET 请求从 URL Query 读取；其他方法只读 Body，与 Validation 行为一致。
 func (that *api) Decode(v interface{}) error {
-	body, err := Decoder.Decode(that.r, v)
+	var body interface{}
+	var err error
+	if that.r.Method == http.MethodGet {
+		body, err = Decoder.DecodeQuery(that.r, v)
+	} else {
+		body, err = Decoder.Decode(that.r, v)
+	}
 	that.reqStruct = body
 	return err
 }
 
-// Validation 接收 v 以及可選的額外規則
-/*
-req := RotateReq{}
-
-方式一：
-err := render.Validation(&req,
-    validation.Field(&req.MinioFullUrl, validation.Required, validation.Match(regexp.MustCompile(`^https?://`))),
-    validation.Field(&req.Position, validation.In(90, 180, 270)),
-)
-if err != nil {
-    render.Error(err)
-    return
-}
-
-
-方式二：
-// 實現接口，這樣 ValidateStruct 會自動調用這裡
-func (r RotateReq) Validate() error {
-    return validation.ValidateStruct(&r,
-        validation.Field(&r.MinioFullUrl, validation.Required),
-        validation.Field(&r.Position, validation.In(90, 180, 270)),
-    )
-}
-
-*/
+// Validation 解析请求并校验字段。
+// GET 请求自动从 URL Query 读取；其他方法（POST/PUT 等）只从 Body 读取，URL Query 不会并入。
+// 如需在非 GET 请求中读取 URL Query 参数，请使用 ValidationFromQuery。
 func (that *api) Validation(v interface{}, fields ...*validation.FieldRules) error {
-	// 1. 解析請求數據 (JSON/Form/Query)
-	if err := that.Decode(v); err != nil {
+	var err error
+	if that.r.Method == "GET" {
+		_, err = Decoder.DecodeQuery(that.r, v)
+	} else {
+		_, err = Decoder.Decode(that.r, v)
+	}
+	that.reqStruct = v
+	if err != nil {
 		return err
 	}
 
-	// 2. 執行結構體基礎校驗 (基於結構體內的 Internal Validate 方法)
-	// 如果結構體實現了 validation.Validatable 接口，會自動執行
-	if err := validation.ValidateStruct(v, fields...); err != nil {
+	if err = validation.ValidateStruct(v, fields...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidationFromQuery 强制从 URL Query 参数解析并校验，不读取 Body。
+// 适用于需要在 POST 等请求中单独读取 URL Query 参数的场景。
+func (that *api) ValidationFromQuery(v interface{}, fields ...*validation.FieldRules) error {
+	_, err := Decoder.DecodeQuery(that.r, v)
+	that.reqStruct = v
+	if err != nil {
+		return err
+	}
+
+	if err = validation.ValidateStruct(v, fields...); err != nil {
 		return err
 	}
 
@@ -147,27 +149,25 @@ func (that *api) Validation(v interface{}, fields ...*validation.FieldRules) err
 
 // ValidMustLogin 檢查登入狀態，若未登入則輸出錯誤並返回 false
 func (that *api) ValidMustLogin() bool {
-	uid := that.GetUid()
-	if uid <= 0 {
+	if that.GetUid() <= 0 {
 		that.ErrorCodeMsg(-401, "请先登入")
 		return false
 	}
 	return true
 }
 
-// GetUid 從 Header 中獲取 JWT 解析後的 UID
-func (that *api) GetUid() int32 {
+// GetUid 從 Header 中獲取 JWT 解析後的 UID，返回 int64
+func (that *api) GetUid() int64 {
 	val := that.r.Header.Get("jwt_uid")
 	if val == "" {
 		return 0
 	}
-	uid, err := strconv.Atoi(val)
+	uid, err := strconv.ParseInt(val, 10, 64)
 	if err != nil {
-		// 2026 實踐：記錄日誌但不中斷流程，返回 0 代表無效用戶
 		log.Printf("apiV3: invalid jwt_uid header: %v", val)
 		return 0
 	}
-	return int32(uid)
+	return uid
 }
 
 func (that *api) SetData(data interface{}) *api {
@@ -193,25 +193,13 @@ func (that *api) SetExt(ext *Ext) *api {
 // Success 成功返回
 func (that *api) Success() {
 	that.respStruct.Code = 0
-	// 日志
 	that.logr("[success]")
-
-	// 加密
 	that.cryptoData()
-
-	// json
-	that.w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(that.w).Encode(that.respStruct); err != nil {
-		// 2026 实践：编码失败属于服务器内部错误，记录日志但不一定发送给客户端
-		log.Printf("JSON Encode Error: %v", err)
-		http.Error(that.w, "Internal Server Error", 500)
-		return
-	}
+	that.writeJSON()
 }
 
 func (that *api) ErrorCodeMsg(code int32, msg string) {
-	err := NewApiError(code, msg)
-	that.Error(err)
+	that.Error(NewApiError(code, msg))
 }
 
 func (that *api) Error(err error) {
@@ -220,24 +208,26 @@ func (that *api) Error(err error) {
 	if err != nil {
 		var e *ApiError
 		if errors.As(err, &e) {
-			// 可以访问e.Code和e.Message
 			that.respStruct.Code = e.Code
 		}
 		that.respStruct.Msg = err.Error()
 	}
 
 	that.logr("[error]")
-
-	// 加密
 	that.cryptoData()
+	that.writeJSON()
+}
 
-	// json
-	that.w.Header().Set("Content-Type", "application/json")
-
-	if err = json.NewEncoder(that.w).Encode(that.respStruct); err != nil {
-		http.Error(that.w, err.Error(), 500)
+// writeJSON 先 Marshal 到内存，成功后一次写入，避免 Header 已发送后再写错误码的双写问题
+func (that *api) writeJSON() {
+	buf, err := json.Marshal(that.respStruct)
+	if err != nil {
+		log.Printf("apiV3 writeJSON marshal error: %v", err)
+		http.Error(that.w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	that.w.Header().Set("Content-Type", "application/json")
+	_, _ = that.w.Write(buf)
 }
 
 func (that *api) cryptoData() {

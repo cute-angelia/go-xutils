@@ -22,30 +22,25 @@ func init() {
 type decoder struct{}
 
 func (d decoder) Decode(r *http.Request, v interface{}) (resp interface{}, err error) {
-	// 1. 如果存在 URL Query 参数，先解码 Query（兼容签名参数与 Query 传参）
-	if len(r.URL.Query()) > 0 {
-		_ = queryDecoder.Decode(v, r.URL.Query())
-	}
-
-	// GET 请求直接返回
+	// GET 请求走 DecodeQuery
 	if r.Method == http.MethodGet {
-		return v, nil
+		return d.DecodeQuery(r, v)
 	}
 
-	// Body 为空时容错（例如无 body 的 POST），直接返回已解析的 query
+	// Body 为空时容错（例如无 body 的 POST），直接返回
 	if r.Body == nil {
 		return v, nil
 	}
 
-	// 2. 安全限制
-	r.Body = http.MaxBytesReader(nil, r.Body, 10<<20)
+	// 安全限制：用 io.LimitReader 代替 http.MaxBytesReader，
+	// 避免因第一个参数为 nil 的 ResponseWriter 在超限时 panic
+	limitedBody := io.LimitReader(r.Body, 10<<20)
 
 	conType := ContentTyper.GetRequestContentType(r)
 
 	switch {
 	case conType == ContentTypeJSON:
-		// 3. 读取 Body
-		data, err := io.ReadAll(r.Body)
+		data, err := io.ReadAll(limitedBody)
 		if err != nil {
 			return nil, err
 		}
@@ -78,6 +73,14 @@ func (d decoder) Decode(r *http.Request, v interface{}) (resp interface{}, err e
 		if errRead == nil && len(data) > 0 {
 			_ = sonic.ConfigDefault.Unmarshal(data, v)
 		}
+	}
+	return v, err
+}
+
+// DecodeQuery 只从 URL Query 参数解析，不读取 Body
+func (d decoder) DecodeQuery(r *http.Request, v interface{}) (resp interface{}, err error) {
+	if len(r.URL.Query()) > 0 {
+		err = queryDecoder.Decode(v, r.URL.Query())
 	}
 	return v, err
 }

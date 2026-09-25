@@ -25,9 +25,9 @@ func (that cryptoEr) SetCryptoKey(cryptoKey string) func(next http.Handler) http
 	}
 }
 
-// GetRequestContentType is a helper function that returns ContentType based on
-// context or request headers.
-func (that cryptoEr) GetRequestContentType(r *http.Request) string {
+// GetCryptoKey 从请求 Context 中读取由 SetCryptoKey 中间件注入的加密密钥。
+// 若未注入则返回空字符串（表示不加密）。
+func (that cryptoEr) GetCryptoKey(r *http.Request) string {
 	if value, ok := r.Context().Value(CryptoCtxKey).(string); ok {
 		return value
 	}

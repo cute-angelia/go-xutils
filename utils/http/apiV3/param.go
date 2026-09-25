@@ -10,7 +10,7 @@ func GetHeaderValue(r *http.Request, key string) string {
 	return r.Header.Get(key)
 }
 
-// GetUid 获取 UID (int64 是 2026 年 ID 处理的标准类型)
+// GetUid 获取 UID，返回 int64
 func GetUid(r *http.Request) int64 {
 	val := GetHeaderValue(r, "jwt_uid")
 	if val == "" {
@@ -20,20 +20,10 @@ func GetUid(r *http.Request) int64 {
 	return uid
 }
 
-// GetUidV2 泛型优化版
-func GetUidV2[T int | int32 | int64](r *http.Request) T {
-	uidStr := GetHeaderValue(r, "jwt_uid")
-	if uidStr == "" {
-		return 0
-	}
-
-	uid, err := strconv.ParseInt(uidStr, 10, 64)
-	if err != nil {
-		return 0
-	}
-
-	// 2026 推荐写法：简洁的类型转换
-	return T(uid)
+// GetUidAs 泛型版本，按需转换类型
+// 示例：GetUidAs[int32](r)
+func GetUidAs[T int | int32 | int64](r *http.Request) T {
+	return T(GetUid(r))
 }
 
 // GetAppId 获取 AppId
